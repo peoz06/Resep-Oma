@@ -1,18 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../models/recipe_model.dart';
-import '../services/api_service.dart';
+import '../services/firebase_service.dart';
+import '../services/recipe_service.dart';
+import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_cached_image.dart';
 
 class UnggahResepScreen extends StatefulWidget {
   final VoidCallback onPublishRecipe;
-  final int? userId;
+  final String? userId;
+  final String userName;
+  final String? userAvatar;
   final ValueChanged<String>? onShowToast;
 
   const UnggahResepScreen({
     super.key,
     required this.onPublishRecipe,
     this.userId,
+    this.userName = 'Anonim',
+    this.userAvatar,
     this.onShowToast,
   });
 
@@ -59,19 +66,83 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
 
   bool _isPublishing = false;
 
-  void _cyclePhoto() {
-    final pool = [
-      MockImages.salmonMentaiHero,
-      MockImages.nasiLemakHome,
-      MockImages.trufflePastaExplore,
-      MockImages.ayamBakarExplore,
-      MockImages.matchaPancakeHome,
-    ];
-    final nextIdx = (pool.indexOf(_heroPhoto) + 1) % pool.length;
-    setState(() {
-      _heroPhoto = pool[nextIdx];
-    });
+  Future<void> _pickHeroPhoto() async {
+    final source = await _showImageSourceSheet();
+    if (source == null) return;
+    final file = await StorageService.pickImage(source: source);
+    if (file == null) return;
+    setState(() => _heroPhoto = file.path);
     widget.onShowToast?.call('Foto utama resep berhasil diperbarui');
+  }
+
+  Future<void> _pickSubPhoto() async {
+    final source = await _showImageSourceSheet();
+    if (source == null) return;
+    final file = await StorageService.pickImage(source: source);
+    if (file == null) return;
+    setState(() {
+      if (_subPhotos.length >= 2) {
+        _subPhotos[0] = file.path;
+      } else {
+        _subPhotos = [..._subPhotos, file.path];
+      }
+    });
+    widget.onShowToast?.call('Foto pendamping resep diperbarui');
+  }
+
+  Future<ImageSource?> _showImageSourceSheet() {
+    return showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.outline,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Pilih Sumber Foto',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined, color: AppColors.primary),
+              title: const Text('Pilih dari Galeri'),
+              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined, color: AppColors.primary),
+              title: const Text('Ambil dengan Kamera'),
+              onTap: () => Navigator.pop(context, ImageSource.camera),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Batal', style: TextStyle(color: AppColors.secondary)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Kembalikan URL siap pakai: foto http dibiarkan, foto lokal diunggah
+  /// ke Firebase Storage. null = unggah gagal.
+  Future<String?> _resolvePhoto(String photo, String folder) async {
+    if (photo.isEmpty) return null;
+    if (AppCachedImage.isNetworkSource(photo)) return photo;
+    return StorageService.uploadFilePath(photo, folder: folder);
   }
 
   void _addIngredientDialog() {
@@ -188,19 +259,42 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
       widget.onShowToast?.call('Masuk akun terlebih dahulu untuk menerbitkan resep.');
       return;
     }
+    if (!RecipeService.isReady) {
+      widget.onShowToast?.call(FirebaseService.humanError);
+      return;
+    }
     if (_isPublishing) return;
 
     setState(() => _isPublishing = true);
 
-    final res = await ApiService.createRecipe(
-      userId: widget.userId!,
+    // 1) Unggah foto lokal ke Firebase Storage.
+    final heroUrl = await _resolvePhoto(_heroPhoto, 'recipes/hero');
+    if (heroUrl == null) {
+      if (!mounted) return;
+      setState(() => _isPublishing = false);
+      widget.onShowToast?.call('Gagal mengunggah foto utama. Periksa koneksi internet Anda.');
+      return;
+    }
+
+    final galleryUrls = <String>[];
+    for (final photo in _subPhotos) {
+      final url = await _resolvePhoto(photo, 'recipes/gallery');
+      if (url != null) galleryUrls.add(url);
+    }
+
+    // 2) Simpan dokumen resep ke Firestore.
+    final res = await RecipeService.createRecipe(
+      authorId: widget.userId!,
+      authorName: widget.userName,
+      authorAvatar: widget.userAvatar,
       title: _titleController.text.trim(),
       description: _descController.text.trim(),
       category: _selectedCategory,
       cookTime: _timeController.text.trim(),
       servings: _servingsController.text.trim(),
       difficulty: _difficultyController.text.trim(),
-      image: _heroPhoto,
+      image: heroUrl,
+      images: galleryUrls,
       ingredients: _ingredients
           .map((i) => {'name': i.name, 'amount': i.amount})
           .toList(),
@@ -212,10 +306,10 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
     if (!mounted) return;
     setState(() => _isPublishing = false);
 
-    if (res['status'] == true) {
+    if (res.ok) {
       widget.onPublishRecipe();
       widget.onShowToast?.call(
-        'Resep "${_titleController.text.trim()}" berhasil dipublikasikan ke database! (Kode: ${res['code']})',
+        'Resep "${_titleController.text.trim()}" berhasil dipublikasikan ke database! (Kode: ${res.code ?? ''})',
       );
       // Bersihkan form
       _titleController.clear();
@@ -225,7 +319,9 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
         _steps.clear();
       });
     } else {
-      widget.onShowToast?.call(res['message']?.toString() ?? 'Gagal menerbitkan resep. Coba lagi.');
+      widget.onShowToast?.call(
+        res.message.isEmpty ? 'Gagal menerbitkan resep. Coba lagi.' : res.message,
+      );
     }
   }
 
@@ -346,7 +442,7 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
 
               // Platter Avatar
               GestureDetector(
-                onTap: _cyclePhoto,
+                onTap: _pickHeroPhoto,
                 child: Stack(
                   clipBehavior: Clip.none,
                   alignment: Alignment.center,
@@ -439,7 +535,7 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
                     );
                   }),
                   GestureDetector(
-                    onTap: _cyclePhoto,
+                    onTap: _pickSubPhoto,
                     child: Container(
                       width: 44,
                       height: 44,

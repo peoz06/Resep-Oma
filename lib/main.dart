@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'screens/main_navigation_screen.dart';
+import 'services/firebase_service.dart';
 import 'theme/app_theme.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Aplikasi tetap jalan bila Firebase belum dikonfigurasi (mode offline).
+  await FirebaseService.init();
   runApp(const DapurKitaApp());
 }
 

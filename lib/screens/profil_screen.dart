@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../models/recipe_model.dart';
-import '../services/api_service.dart';
+import '../models/user_model.dart';
+import '../services/auth_service.dart';
+import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_cached_image.dart';
 
@@ -14,12 +16,15 @@ class ProfilScreen extends StatefulWidget {
   final VoidCallback onLogout;
   final VoidCallback onLogin;
   final bool isLoggedIn;
-  final int? userId;
+  final String? userId;
   final String userName;
   final String userEmail;
   final String? userAvatar;
   final ValueChanged<String>? onShowToast;
-  final void Function(String newName, String newEmail)? onUpdateProfile;
+
+  /// (nama, email, profil Firestore hasil penyimpanan — null bila tamu)
+  final void Function(String name, String email, AppUser? updatedUser)?
+      onUpdateProfile;
 
   const ProfilScreen({
     super.key,
@@ -70,6 +75,32 @@ class _ProfilScreenState extends State<ProfilScreen> {
     }
   }
 
+  Future<void> _changeAvatar() async {
+    if (!widget.isLoggedIn || widget.userId == null) {
+      widget.onShowToast?.call('Masuk akun terlebih dahulu untuk mengubah foto profil.');
+      return;
+    }
+    final file = await StorageService.pickImage();
+    if (file == null) return;
+
+    widget.onShowToast?.call('Mengunggah foto profil...');
+    final url = await StorageService.uploadImage(file, folder: 'avatars');
+    if (url == null) {
+      widget.onShowToast?.call('Gagal mengunggah foto. Periksa koneksi internet Anda.');
+      return;
+    }
+
+    final res = await AuthService.updateProfile(avatar: url);
+    if (!res.ok || res.user == null) {
+      widget.onShowToast?.call(
+        res.message.isEmpty ? 'Gagal menyimpan foto profil.' : res.message,
+      );
+      return;
+    }
+    widget.onUpdateProfile?.call(res.user!.name, res.user!.email, res.user);
+    widget.onShowToast?.call('Foto profil berhasil diperbarui.');
+  }
+
   void _editProfileDialog() {
     final nameCtrl = TextEditingController(text: _name);
     final emailCtrl = TextEditingController(text: _email);
@@ -101,23 +132,24 @@ class _ProfilScreenState extends State<ProfilScreen> {
                     final newEmail = emailCtrl.text.trim().isEmpty ? _email : emailCtrl.text.trim();
                     final newHandle = handleCtrl.text.trim().isEmpty ? _handle : handleCtrl.text.trim();
 
-                    // Simpan ke database MySQL (jika user sudah login)
+                    AppUser? savedUser;
+
+                    // Simpan ke Firestore (jika user sudah login)
                     if (widget.isLoggedIn && widget.userId != null) {
                       setDialogState(() => saving = true);
-                      final res = await ApiService.updateUserAction(
-                        id: widget.userId!,
-                        action: 'update_profile',
+                      final res = await AuthService.updateProfile(
                         name: newName,
                         email: newEmail,
                       );
                       if (!context.mounted) return;
-                      if (res['status'] != true) {
+                      if (!res.ok) {
                         setDialogState(() => saving = false);
                         widget.onShowToast?.call(
-                          res['message']?.toString() ?? 'Gagal menyimpan profil.',
+                          res.message.isEmpty ? 'Gagal menyimpan profil.' : res.message,
                         );
                         return;
                       }
+                      savedUser = res.user;
                     }
 
                     setState(() {
@@ -125,8 +157,8 @@ class _ProfilScreenState extends State<ProfilScreen> {
                       _email = newEmail;
                       _handle = newHandle;
                     });
-                    Navigator.pop(context);
-                    widget.onUpdateProfile?.call(newName, newEmail);
+                    if (context.mounted) Navigator.pop(context);
+                    widget.onUpdateProfile?.call(newName, newEmail, savedUser);
                     widget.onShowToast?.call(
                       widget.isLoggedIn
                           ? 'Profil berhasil disimpan ke database!'
@@ -164,13 +196,34 @@ class _ProfilScreenState extends State<ProfilScreen> {
         Row(
           children: [
             if (widget.isLoggedIn)
-              AppCachedImage(
-                imageUrl: (widget.userAvatar != null && widget.userAvatar!.isNotEmpty)
-                    ? widget.userAvatar!
-                    : MockImages.annaRobertsAvatar,
-                width: 72,
-                height: 72,
-                isCircle: true,
+              GestureDetector(
+                onTap: _changeAvatar,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    AppCachedImage(
+                      imageUrl: (widget.userAvatar != null && widget.userAvatar!.isNotEmpty)
+                          ? widget.userAvatar!
+                          : MockImages.annaRobertsAvatar,
+                      width: 72,
+                      height: 72,
+                      isCircle: true,
+                    ),
+                    Positioned(
+                      right: -2,
+                      bottom: -2,
+                      child: Container(
+                        padding: const EdgeInsets.all(5),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: AppColors.surface, width: 2),
+                        ),
+                        child: const Icon(Icons.camera_alt, color: Colors.white, size: 12),
+                      ),
+                    ),
+                  ],
+                ),
               )
             else
               Container(
@@ -478,14 +531,17 @@ class _ProfilScreenState extends State<ProfilScreen> {
 
         Container(
           decoration: BoxDecoration(
-            color: AppColors.surfaceContainerLowest,
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10),
             ],
           ),
-          child: Column(
-            children: [
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: Material(
+              color: AppColors.surfaceContainerLowest,
+              child: Column(
+                children: [
               _buildSettingTile(
                 icon: Icons.menu_book,
                 label: 'Resep Saya',
@@ -529,7 +585,9 @@ class _ProfilScreenState extends State<ProfilScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 24),
+      ),
+    ),
+    const SizedBox(height: 24),
       ],
     );
   }
@@ -540,15 +598,12 @@ class _ProfilScreenState extends State<ProfilScreen> {
     Color? color,
     required VoidCallback onTap,
   }) {
+    final tileColor = (color ?? AppColors.onSurfaceVariant).withValues(alpha: 0.1);
     return ListTile(
       onTap: onTap,
-      leading: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: (color ?? AppColors.onSurfaceVariant).withValues(alpha: 0.1),
-          shape: BoxShape.circle,
-        ),
+      leading: CircleAvatar(
+        radius: 18,
+        backgroundColor: tileColor,
         child: Icon(icon, color: color ?? AppColors.onSurfaceVariant, size: 18),
       ),
       title: Text(

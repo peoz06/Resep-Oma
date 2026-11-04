@@ -1,3 +1,7 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+import 'user_model.dart';
+
 class Ingredient {
   final String id;
   final String name;
@@ -9,9 +13,9 @@ class Ingredient {
     required this.amount,
   });
 
-  factory Ingredient.fromDb(Map<String, dynamic> row) {
+  factory Ingredient.fromFirestore(Map<String, dynamic> row, {String fallbackId = ''}) {
     return Ingredient(
-      id: row['id'].toString(),
+      id: row['id']?.toString() ?? fallbackId,
       name: (row['name'] ?? '') as String,
       amount: (row['amount'] ?? '') as String,
     );
@@ -37,9 +41,9 @@ class CookingStep {
     required this.description,
   });
 
-  factory CookingStep.fromDb(Map<String, dynamic> row) {
+  factory CookingStep.fromFirestore(Map<String, dynamic> row, {String fallbackId = ''}) {
     return CookingStep(
-      id: row['id'].toString(),
+      id: row['id']?.toString() ?? fallbackId,
       title: (row['title'] ?? '') as String,
       description: (row['description'] ?? '') as String,
     );
@@ -105,44 +109,77 @@ class Recipe {
     required this.steps,
   });
 
-  /// Bangun objek Recipe dari baris JSON API (tabel MySQL `recipes`
-  /// yang sudah di-join dengan `users`).
-  factory Recipe.fromDb(
-    Map<String, dynamic> row, {
+  /// Bangun objek [Recipe] dari dokumen Firestore (`recipes/{id}`).
+  factory Recipe.fromFirestore(
+    String id,
+    Map<String, dynamic> data, {
     bool isFavorite = false,
-    int? currentUserId,
-    List<Ingredient>? ingredients,
-    List<CookingStep>? steps,
+    String? currentUid,
   }) {
-    final authorId = (row['user_id'] ?? 0) as int;
+    final authorId = (data['authorId'] ?? '') as String;
+    final likesCount =
+        data['likesCount'] is num ? (data['likesCount'] as num).toInt() : 0;
+    final recooksCount =
+        data['recooksCount'] is num ? (data['recooksCount'] as num).toInt() : 0;
+    final reportedCount =
+        data['reportedCount'] is num ? (data['reportedCount'] as num).toInt() : null;
+    final category = (data['category'] ?? '') as String;
+
+    final rawIngredients = (data['ingredients'] as List?) ?? const [];
+    final rawSteps = (data['steps'] as List?) ?? const [];
+
     return Recipe(
-      id: row['id'].toString(),
-      code: (row['code'] ?? '') as String,
-      title: (row['title'] ?? '') as String,
-      description: (row['description'] ?? '') as String,
-      category: (row['category'] ?? '') as String,
-      filterKey: ((row['category'] ?? '') as String).toLowerCase(),
-      author: (row['author_name'] ?? 'Anonim') as String,
-      authorAvatar: row['author_avatar'] as String?,
-      verified: false,
-      likes: '${row['likes_count'] ?? 0}',
-      likesCount: (row['likes_count'] ?? 0) as int,
-      recooks: '${row['recooks_count'] ?? 0}',
-      time: (row['cook_time'] ?? '-') as String,
-      servings: (row['servings'] ?? '-') as String,
-      difficulty: (row['difficulty'] ?? 'Mudah') as String,
-      image: (row['image'] ?? '') as String,
+      id: id,
+      code: (data['code'] ?? '') as String,
+      title: (data['title'] ?? '') as String,
+      description: (data['description'] ?? '') as String,
+      category: category,
+      filterKey: category.toLowerCase(),
+      author: (data['authorName'] ?? 'Anonim') as String,
+      authorAvatar: data['authorAvatar'] as String?,
+      verified: (data['verified'] ?? false) as bool,
+      likes: likesCount >= 1000
+          ? '${(likesCount / 1000).toStringAsFixed(1)}k'
+          : '$likesCount',
+      likesCount: likesCount,
+      recooks: '$recooksCount recook',
+      time: (data['cookTime'] ?? '-') as String,
+      servings: (data['servings'] ?? '-') as String,
+      difficulty: (data['difficulty'] ?? 'Mudah') as String,
+      image: (data['image'] ?? '') as String,
+      secondaryImages:
+          (data['images'] as List?)?.map((e) => '$e').toList(growable: false),
       isFavorite: isFavorite,
-      isMyRecipe: currentUserId != null && authorId == currentUserId,
-      publishedAgo: Recipe._formatAgo(row['created_at']),
-      ingredients: ingredients ?? [],
-      steps: steps ?? [],
+      isMyRecipe:
+          currentUid != null && currentUid.isNotEmpty && authorId == currentUid,
+      publishedAgo: Recipe._formatAgo(data['createdAt']),
+      reportedCount: reportedCount,
+      ingredients: [
+        for (var i = 0; i < rawIngredients.length; i++)
+          Ingredient.fromFirestore(
+            Map<String, dynamic>.from(rawIngredients[i] as Map),
+            fallbackId: 'ing-$i',
+          ),
+      ],
+      steps: [
+        for (var i = 0; i < rawSteps.length; i++)
+          CookingStep.fromFirestore(
+            Map<String, dynamic>.from(rawSteps[i] as Map),
+            fallbackId: 'step-$i',
+          ),
+      ],
     );
   }
 
   static String _formatAgo(dynamic createdAt) {
-    if (createdAt == null) return 'Baru saja';
-    final dt = DateTime.tryParse(createdAt.toString());
+    DateTime? dt;
+    if (createdAt is Timestamp) {
+      dt = createdAt.toDate();
+    } else if (createdAt is DateTime) {
+      dt = createdAt;
+    } else if (createdAt != null) {
+      dt = DateTime.tryParse(createdAt.toString());
+    }
     if (dt == null) return 'Baru saja';
     final diff = DateTime.now().difference(dt);
     if (diff.inMinutes < 1) return 'Baru saja';
@@ -227,6 +264,30 @@ class AdminUser {
     required this.role,
     required this.registeredDate,
   });
+
+  /// Konversi profil Firestore ([AppUser]) ke tampilan admin.
+  factory AdminUser.fromAppUser(AppUser user) {
+    return AdminUser(
+      id: user.uid,
+      code: user.code,
+      name: user.name,
+      email: user.email,
+      avatar: user.avatar ?? '',
+      status: user.isPending ? 'Baru' : user.statusLabel,
+      role: user.roleLabel,
+      registeredDate: user.createdAt != null
+          ? AdminUser._formatDate(user.createdAt!)
+          : 'Baru saja',
+    );
+  }
+
+  static String _formatDate(DateTime dt) {
+    const bulan = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+      'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'
+    ];
+    return '${dt.day} ${bulan[dt.month - 1]} ${dt.year}';
+  }
 }
 
 class MockImages {

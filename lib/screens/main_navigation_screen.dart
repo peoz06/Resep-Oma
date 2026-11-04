@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../models/recipe_model.dart';
-import '../services/api_service.dart';
+import '../models/user_model.dart';
+import '../services/auth_service.dart';
+import '../services/firebase_service.dart';
+import '../services/recipe_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/recipe_detail_sheet.dart';
 import 'admin_screens.dart';
@@ -36,7 +39,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   // Guest State by default!
   bool _isLoggedIn = false;
-  int? _currentUserId;
+  String? _currentUserId;
   String _currentUserRole = 'user';
   String _currentUserName = 'Tamu';
   String _currentUserEmail = 'guest@resepoma.id';
@@ -63,78 +66,94 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   void initState() {
     super.initState();
     _recipes = [];
-    _loadRecipesFromApi();
+    _bootstrap();
   }
 
-  /// Muat daftar resep dari MySQL lewat API PHP.
-  /// Jika server tidak terjangkau, otomatis tampil data contoh (mode offline).
-  Future<void> _loadRecipesFromApi() async {
-    setState(() => _loadingRecipes = true);
+  /// Urutan awal aplikasi:
+  /// 1. siapkan Firebase (bila sudah dikonfigurasi)
+  /// 2. pulihkan sesi tersimpan, atau buat sesi tamu (anonim)
+  /// 3. muat daftar resep
+  Future<void> _bootstrap() async {
+    await FirebaseService.init();
 
-    // Tentukan URL API yang bisa dijangkau (localhost / emulator / IP laptop).
-    await ApiService.resolveBaseUrl();
-
-    // Tidak ada server sama sekali: langsung mode offline tanpa menunggu timeout.
-    if (!ApiService.isServerAvailable) {
-      setState(() {
-        _recipes = MockData.getInitialRecipes();
-        _offlineMode = true;
-        _loadingRecipes = false;
-      });
-      _showToast('Server API tidak ditemukan. Menampilkan resep contoh (mode offline).');
-      return;
+    if (FirebaseService.isReady) {
+      final restored = await AuthService.restoreSession();
+      if (restored.ok && restored.user != null) {
+        _applyUser(restored.user!);
+      } else {
+        // Mode tamu: beri identitas anonim agar aturan keamanan Firestore
+        // tetap bisa diterapkan. Gagal pun aplikasi tetap jalan sebagai tamu.
+        try {
+          await AuthService.signInAnonymously()
+              .timeout(const Duration(seconds: 5));
+        } catch (_) {
+          // diabaikan — tamu tanpa sesi Firebase tetap sah
+        }
+      }
     }
 
-    final res = await ApiService.fetchRecipes();
-    final favIds = await _fetchFavoriteIds();
+    if (!mounted) return;
+    await _loadRecipes();
+  }
+
+  void _applyUser(AppUser user) {
+    _isLoggedIn = true;
+    _currentUserId = user.uid;
+    _currentUserRole = user.role;
+    _currentUserEmail = user.email;
+    _currentUserName = user.name.trim().isEmpty ? 'Pengguna' : user.name.trim();
+    _currentUserAvatar = user.avatar;
+    _prefilledLoginEmail = user.email;
+  }
+
+  void _resetGuestState() {
+    _isLoggedIn = false;
+    _currentUserId = null;
+    _currentUserRole = 'user';
+    _currentUserName = 'Tamu';
+    _currentUserEmail = 'guest@resepoma.id';
+    _currentUserAvatar = null;
+  }
+
+  /// Muat daftar resep dari Firestore.
+  /// Jika Firebase belum terkonfigurasi atau koleksi masih kosong,
+  /// otomatis tampil data contoh (mode offline / demo).
+  Future<void> _loadRecipes() async {
+    setState(() => _loadingRecipes = true);
+
+    final uid = _currentUserId;
+    Set<String> favIds = const {};
+    if (uid != null) {
+      favIds = await RecipeService.fetchFavoriteIds(uid);
+    }
+
+    final recipes = await RecipeService.fetchRecipes(
+      currentUid: uid,
+      favoriteIds: favIds,
+    );
 
     if (!mounted) return;
 
-    if (res['status'] == true) {
-      final rows = (res['recipes'] as List).cast<Map<String, dynamic>>();
-      if (rows.isEmpty) {
-        // Database kosong: tampilkan data contoh agar aplikasi tetap terpakai.
-        setState(() {
-          _recipes = MockData.getInitialRecipes();
-          _offlineMode = true;
-          _loadingRecipes = false;
-        });
-        _showToast('Database masih kosong. Menampilkan resep contoh (mode demo).');
-      } else {
-        setState(() {
-          _recipes = rows
-              .map((row) => Recipe.fromDb(
-                    row,
-                    currentUserId: _currentUserId,
-                    isFavorite: favIds.contains(row['id']),
-                  ))
-              .toList();
-          if (_offlineMode) {
-            _offlineMode = false;
-          }
-          _loadingRecipes = false;
-        });
-      }
-    } else {
-      // Server tidak terjangkau / error: fallback ke data contoh.
+    if (recipes.isNotEmpty) {
       setState(() {
-        _recipes = MockData.getInitialRecipes();
-        _offlineMode = true;
+        _recipes = recipes;
+        _offlineMode = false;
         _loadingRecipes = false;
       });
-      _showToast(
-        '${res['message']?.toString() ?? 'Server tidak terjangkau.'} Menampilkan resep contoh (mode offline).',
-      );
+      return;
     }
-  }
 
-  /// Ambil ID resep yang disukai user yang sedang login.
-  Future<Set<int>> _fetchFavoriteIds() async {
-    if (_currentUserId == null) return {};
-    final res = await ApiService.fetchFavorites(_currentUserId!);
-    if (res['status'] != true) return {};
-    final rows = (res['favorites'] as List).cast<Map<String, dynamic>>();
-    return rows.map((r) => (r['id'] as num).toInt()).toSet();
+    final notConfigured = !FirebaseService.isReady;
+    setState(() {
+      _recipes = MockData.getInitialRecipes();
+      _offlineMode = true;
+      _loadingRecipes = false;
+    });
+    _showToast(
+      notConfigured
+          ? '${FirebaseService.humanError} Menampilkan resep contoh (mode offline).'
+          : 'Database masih kosong. Menampilkan resep contoh (mode demo).',
+    );
   }
 
   void _showToast(String msg) {
@@ -236,25 +255,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
-  void _handleRegisterSuccess(String name, String email) {
+  void _handleLoginSuccess(AppUser user) {
     setState(() {
-      _currentUserName = name;
-      _currentUserEmail = email;
-      _prefilledLoginEmail = email;
-      _authScreen = 'login'; // Dilempar ke halaman login!
-    });
-    _showToast('Registrasi berhasil! Silakan masukkan kata sandi untuk login.');
-  }
-
-  void _handleLoginSuccess(Map<String, dynamic> user) {
-    setState(() {
-      _isLoggedIn = true;
-      _currentUserId = (user['id'] as num).toInt();
-      _currentUserRole = (user['role'] ?? 'user') as String;
-      _currentUserEmail = (user['email'] ?? '') as String;
-      _currentUserName = (user['name'] ?? '') as String;
-      _currentUserAvatar = user['avatar'] as String?;
-      _prefilledLoginEmail = _currentUserEmail;
+      _applyUser(user);
       _currentMode = AppMode.user;
 
       if (_pendingUploadAfterLogin) {
@@ -262,21 +265,18 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         _pendingUploadAfterLogin = false;
         _showToast('Berhasil masuk! Silakan mulai membuat resep kreasi Anda.');
       } else {
-        _showToast('Selamat datang kembali, $_currentUserName!');
+        _showToast('Selamat datang, $_currentUserName!');
       }
     });
     // Muat ulang resep agar flag favorit & "Resep Saya" sesuai user login.
-    _loadRecipesFromApi();
+    _loadRecipes();
   }
 
-  void _handleLogout() {
+  void _handleLogout() async {
+    await AuthService.signOut();
+    if (!mounted) return;
     setState(() {
-      _isLoggedIn = false;
-      _currentUserId = null;
-      _currentUserRole = 'user';
-      _currentUserName = 'Tamu';
-      _currentUserEmail = 'guest@resepoma.id';
-      _currentUserAvatar = null;
+      _resetGuestState();
       _userNavIndex = 0;
       _currentMode = AppMode.user;
     });
@@ -288,43 +288,43 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 
   void _toggleFavorite(String id) async {
-    final idx = _recipes.indexWhere((r) => r.id == id);
-    if (idx == -1) return;
+    final uid = _currentUserId;
 
-    // Mode offline (data contoh): toggle lokal saja.
-    final recipeId = int.tryParse(id);
-    if (_currentUserId == null || recipeId == null || _offlineMode) {
+    // Tamu / mode offline (data contoh): toggle lokal saja.
+    if (uid == null || _offlineMode || !FirebaseService.isReady) {
       setState(() {
-        final idx2 = _recipes.indexWhere((r) => r.id == id);
-        if (idx2 != -1) {
-          _recipes[idx2].isFavorite = !_recipes[idx2].isFavorite;
-          final isFav = _recipes[idx2].isFavorite;
+        final idx = _recipes.indexWhere((r) => r.id == id);
+        if (idx != -1) {
+          _recipes[idx].isFavorite = !_recipes[idx].isFavorite;
+          final isFav = _recipes[idx].isFavorite;
           _showToast(isFav
-              ? '"${_recipes[idx2].title}" disimpan ke Favorit'
-              : '"${_recipes[idx2].title}" dihapus dari Favorit');
+              ? '"${_recipes[idx].title}" disimpan ke Favorit'
+              : '"${_recipes[idx].title}" dihapus dari Favorit');
         }
       });
       return;
     }
 
-    final res = await ApiService.toggleFavorite(
-      userId: _currentUserId!,
-      recipeId: recipeId,
-    );
+    final newState = await RecipeService.toggleFavorite(uid: uid, recipeId: id);
 
     if (!mounted) return;
 
-    if (res['status'] == true) {
-      setState(() {
-        final idx2 = _recipes.indexWhere((r) => r.id == id);
-        if (idx2 != -1) {
-          _recipes[idx2].isFavorite = (res['is_favorite'] ?? false) as bool;
-        }
-      });
-      _showToast(res['message']?.toString() ?? 'Favorit diperbarui.');
-    } else {
-      _showToast(res['message']?.toString() ?? 'Gagal memperbarui favorit.');
+    if (newState == null) {
+      _showToast('Gagal memperbarui favorit. Periksa koneksi internet Anda.');
+      return;
     }
+
+    setState(() {
+      final idx = _recipes.indexWhere((r) => r.id == id);
+      if (idx != -1) {
+        _recipes[idx].isFavorite = newState;
+      }
+    });
+    final idx = _recipes.indexWhere((r) => r.id == id);
+    final title = idx != -1 ? _recipes[idx].title : '';
+    _showToast(newState
+        ? '"$title" disimpan ke Favorit'
+        : '"$title" dihapus dari Favorit');
   }
 
   void _selectRecipe(Recipe recipe) {
@@ -334,12 +334,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       onToggleFavorite: () => _toggleFavorite(recipe.id),
       onShowToast: _showToast,
       currentUserId: _currentUserId,
+      currentUserName: _currentUserName,
     );
   }
 
   void _publishRecipe() {
     // Muat ulang dari database agar data terbaru tampil (termasuk kode resep).
-    _loadRecipesFromApi();
+    _loadRecipes();
     setState(() => _userNavIndex = 0);
   }
 
@@ -347,23 +348,26 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     final idx = _recipes.indexWhere((r) => r.id == id);
     final target = idx != -1 ? _recipes[idx] : null;
 
-    final recipeId = int.tryParse(id);
-    if (recipeId == null || _offlineMode) {
+    if (!RecipeService.isReady || _offlineMode) {
       // Mode offline: hapus lokal saja.
       setState(() => _recipes.removeWhere((r) => r.id == id));
       _showToast('Resep "${target?.title ?? ''}" dihapus (mode offline).');
       return;
     }
 
-    final res = await ApiService.deleteRecipe(recipeId);
+    final res = await RecipeService.deleteRecipe(id);
 
     if (!mounted) return;
 
-    if (res['status'] == true) {
-      _loadRecipesFromApi();
-      _showToast(res['message']?.toString() ?? 'Resep "${target?.title ?? ''}" telah dihapus.');
+    if (res.ok) {
+      await _loadRecipes();
+      _showToast(
+        res.message.isNotEmpty
+            ? res.message
+            : 'Resep "${target?.title ?? ''}" telah dihapus.',
+      );
     } else {
-      _showToast(res['message']?.toString() ?? 'Gagal menghapus resep.');
+      _showToast(res.message.isNotEmpty ? res.message : 'Gagal menghapus resep.');
     }
   }
 
@@ -383,7 +387,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               onShowToast: _showToast,
             )
           : RegisterScreen(
-              onRegisterSuccess: _handleRegisterSuccess,
+              onRegisterSuccess: _handleLoginSuccess,
               onNavigateToLogin: () => setState(() => _authScreen = 'login'),
               onBackToGuest: () => setState(() => _currentMode = AppMode.user),
               onShowToast: _showToast,
@@ -429,6 +433,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           currentScreenWidget = UnggahResepScreen(
             onPublishRecipe: _publishRecipe,
             userId: _currentUserId,
+            userName: _currentUserName,
+            userAvatar: _currentUserAvatar,
             onShowToast: _showToast,
           );
           break;
@@ -464,10 +470,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               });
             },
             onLogout: _handleLogout,
-            onUpdateProfile: (newName, newEmail) {
+            onUpdateProfile: (name, email, updated) {
               setState(() {
-                _currentUserName = newName;
-                _currentUserEmail = newEmail;
+                if (updated != null) _applyUser(updated);
+                _currentUserName = name;
+                _currentUserEmail = email;
+                _prefilledLoginEmail = email;
               });
             },
             onLogin: () => setState(() {

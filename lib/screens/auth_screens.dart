@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import '../services/api_service.dart';
+import '../models/user_model.dart';
+import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 
 class LoginScreen extends StatefulWidget {
-  final void Function(Map<String, dynamic> user) onLoginSuccess;
+  final ValueChanged<AppUser> onLoginSuccess;
   final VoidCallback onNavigateToRegister;
   final VoidCallback? onBackToGuest;
   final String? initialEmail;
@@ -65,7 +66,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (_loading) return;
     setState(() => _loading = true);
 
-    final res = await ApiService.login(
+    final res = await AuthService.signInWithEmail(
       email: _emailCtrl.text.trim(),
       password: _passCtrl.text,
     );
@@ -73,11 +74,43 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mounted) return;
     setState(() => _loading = false);
 
-    if (res['status'] == true) {
-      widget.onLoginSuccess(Map<String, dynamic>.from(res['user'] as Map));
+    if (res.ok && res.user != null) {
+      widget.onLoginSuccess(res.user!);
     } else {
-      widget.onShowToast?.call(res['message']?.toString() ?? 'Login gagal. Coba lagi.');
+      widget.onShowToast?.call(
+        res.message.isEmpty ? 'Login gagal. Coba lagi.' : res.message,
+      );
     }
+  }
+
+  Future<void> _submitGoogle() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+
+    final res = await AuthService.signInWithGoogle();
+
+    if (!mounted) return;
+    setState(() => _loading = false);
+
+    if (res.ok && res.user != null) {
+      widget.onLoginSuccess(res.user!);
+    } else {
+      widget.onShowToast?.call(
+        res.message.isEmpty ? 'Login Google gagal. Coba lagi.' : res.message,
+      );
+    }
+  }
+
+  Future<void> _forgotPassword() async {
+    final email = _emailCtrl.text.trim();
+    if (email.isEmpty || !email.contains('@')) {
+      widget.onShowToast?.call('Masukkan email yang valid terlebih dahulu.');
+      return;
+    }
+    final res = await AuthService.sendPasswordReset(email);
+    widget.onShowToast?.call(
+      res.message.isEmpty ? 'Gagal mengirim email pemulihan.' : res.message,
+    );
   }
 
   @override
@@ -206,7 +239,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ],
                       ),
                       TextButton(
-                        onPressed: () => widget.onShowToast?.call('Tautan pemulihan sandi telah dikirim ke email.'),
+                        onPressed: _forgotPassword,
                         child: const Text('Lupa Sandi?', style: TextStyle(color: AppColors.primary, fontSize: 12)),
                       ),
                     ],
@@ -260,11 +293,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     children: [
                       Expanded(
                         child: OutlinedButton(
-                          onPressed: () {
-                            widget.onShowToast?.call(
-                              'Login Google belum tersedia. Silakan masuk dengan email & kata sandi.',
-                            );
-                          },
+                          onPressed: _loading ? null : _submitGoogle,
                           style: OutlinedButton.styleFrom(
                             backgroundColor: AppColors.surfaceContainerLow,
                             side: BorderSide.none,
@@ -319,7 +348,7 @@ class _LoginScreenState extends State<LoginScreen> {
 }
 
 class RegisterScreen extends StatefulWidget {
-  final void Function(String name, String email) onRegisterSuccess;
+  final ValueChanged<AppUser> onRegisterSuccess;
   final VoidCallback onNavigateToLogin;
   final VoidCallback? onBackToGuest;
   final ValueChanged<String>? onShowToast;
@@ -380,7 +409,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (_loading) return;
     setState(() => _loading = true);
 
-    final res = await ApiService.register(
+    final res = await AuthService.register(
       name: _nameCtrl.text.trim(),
       email: _emailCtrl.text.trim(),
       password: _passCtrl.text,
@@ -389,10 +418,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (!mounted) return;
     setState(() => _loading = false);
 
-    if (res['status'] == true) {
-      widget.onRegisterSuccess(_nameCtrl.text.trim(), _emailCtrl.text.trim());
+    if (res.ok && res.user != null) {
+      // Firebase Auth langsung memasukkan pengguna baru ke sesi,
+      // jadi tidak perlu dilempar ke halaman login lagi.
+      widget.onRegisterSuccess(res.user!);
     } else {
-      widget.onShowToast?.call(res['message']?.toString() ?? 'Registrasi gagal. Coba lagi.');
+      widget.onShowToast?.call(
+        res.message.isEmpty ? 'Registrasi gagal. Coba lagi.' : res.message,
+      );
     }
   }
 

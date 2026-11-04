@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/recipe_model.dart';
-import '../services/api_service.dart';
+import '../services/recipe_service.dart';
 import '../theme/app_theme.dart';
 import 'app_cached_image.dart';
 
@@ -8,7 +8,8 @@ class RecipeDetailSheet extends StatefulWidget {
   final Recipe recipe;
   final VoidCallback onToggleFavorite;
   final ValueChanged<String>? onShowToast;
-  final int? currentUserId;
+  final String? currentUserId;
+  final String? currentUserName;
 
   const RecipeDetailSheet({
     super.key,
@@ -16,6 +17,7 @@ class RecipeDetailSheet extends StatefulWidget {
     required this.onToggleFavorite,
     this.onShowToast,
     this.currentUserId,
+    this.currentUserName,
   });
 
   static void show(
@@ -23,7 +25,8 @@ class RecipeDetailSheet extends StatefulWidget {
     required Recipe recipe,
     required VoidCallback onToggleFavorite,
     ValueChanged<String>? onShowToast,
-    int? currentUserId,
+    String? currentUserId,
+    String? currentUserName,
   }) {
     showModalBottomSheet(
       context: context,
@@ -34,6 +37,7 @@ class RecipeDetailSheet extends StatefulWidget {
         onToggleFavorite: onToggleFavorite,
         onShowToast: onShowToast,
         currentUserId: currentUserId,
+        currentUserName: currentUserName,
       ),
     );
   }
@@ -96,25 +100,29 @@ class _RecipeDetailSheetState extends State<RecipeDetailSheet> {
                       return;
                     }
                     setState(() => _submittingReport = true);
-                    final recipeId = int.tryParse(widget.recipe.id);
-                    if (recipeId == null) {
+
+                    if (!RecipeService.isReady) {
                       setState(() => _submittingReport = false);
-                      Navigator.pop(context);
+                      if (context.mounted) Navigator.pop(context);
                       widget.onShowToast?.call(
-                        'Resep contoh (mode offline) tidak dapat dilaporkan.',
+                        'Laporan hanya tersedia saat terhubung ke database. Silakan coba lagi.',
                       );
                       return;
                     }
-                    final res = await ApiService.submitReport(
-                      userId: widget.currentUserId!,
-                      recipeId: recipeId,
+
+                    final res = await RecipeService.submitReport(
+                      reporterId: widget.currentUserId!,
+                      reporterName: widget.currentUserName ?? 'Anonim',
+                      recipeId: widget.recipe.id,
+                      recipeTitle: widget.recipe.title,
                       reason: reason,
                     );
+
                     if (!mounted) return;
                     setState(() => _submittingReport = false);
-                    Navigator.pop(context);
+                    if (context.mounted) Navigator.pop(context);
                     widget.onShowToast?.call(
-                      res['message']?.toString() ?? 'Gagal mengirim laporan.',
+                      res.message.isEmpty ? 'Gagal mengirim laporan.' : res.message,
                     );
                   },
             style: ElevatedButton.styleFrom(

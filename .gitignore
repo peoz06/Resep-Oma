@@ -2,6 +2,7 @@ node_modules/
 build/
 dist/
 coverage/
+.dart_tool/
 .DS_Store
 *.log
 .env*

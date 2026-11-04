@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/recipe_model.dart';
-import '../services/api_service.dart';
+import '../services/recipe_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_cached_image.dart';
 
@@ -27,7 +27,7 @@ class _AdminRecipesScreenState extends State<AdminRecipesScreen> {
   String _activeFilter = 'all';
 
   List<Map<String, dynamic>> _adminList = [];
-  Map<int, int> _reportCounts = {}; // recipe_id -> jumlah laporan open
+  Map<String, int> _reportCounts = {}; // recipe_id -> jumlah laporan open
   bool _loading = true;
 
   @override
@@ -39,14 +39,13 @@ class _AdminRecipesScreenState extends State<AdminRecipesScreen> {
   Future<void> _loadData() async {
     setState(() => _loading = true);
 
-    // Muat laporan dari database
-    final repRes = await ApiService.fetchReports();
-    final Map<int, int> counts = {};
-    if (repRes['status'] == true) {
-      final reportsList = List<Map<String, dynamic>>.from((repRes['reports'] as List).map((e) => Map<String, dynamic>.from(e)));
-      for (final r in reportsList) {
-        if (r['status'] == 'open') {
-          final rid = (r['recipe_id'] as num).toInt();
+    // Muat laporan dari Firestore
+    final reports = await RecipeService.fetchReports();
+    final Map<String, int> counts = {};
+    for (final r in reports) {
+      if (r['status'] == 'open') {
+        final rid = (r['recipeId'] ?? '') as String;
+        if (rid.isNotEmpty) {
           counts[rid] = (counts[rid] ?? 0) + 1;
         }
       }
@@ -55,57 +54,40 @@ class _AdminRecipesScreenState extends State<AdminRecipesScreen> {
     if (!mounted) return;
     setState(() {
       _reportCounts = counts;
-      _adminList = widget.recipes.map((recipe) {
-        final likes = recipe.likesCount;
-        final likesStr = likes >= 1000 ? '${(likes / 1000).toStringAsFixed(1)}k' : '$likes';
-        return {
-          'id': recipe.id,
-          'title': recipe.title,
-          'author': recipe.author,
-          'code': '#${recipe.code}',
-          'likes': likesStr,
-          'timeAgo': recipe.publishedAgo,
-          'image': recipe.image,
-          'reported': counts[int.parse(recipe.id)] ?? 0,
-          'popular': likes >= 200,
-        };
-      }).toList();
+      _adminList = widget.recipes.map(_mapRecipe).toList();
       _loading = false;
     });
   }
 
+  Map<String, dynamic> _mapRecipe(Recipe recipe) {
+    final likes = recipe.likesCount;
+    final likesStr = likes >= 1000 ? '${(likes / 1000).toStringAsFixed(1)}k' : '$likes';
+    return {
+      'id': recipe.id,
+      'title': recipe.title,
+      'author': recipe.author,
+      'code': '#${recipe.code}',
+      'likes': likesStr,
+      'timeAgo': recipe.publishedAgo,
+      'image': recipe.image,
+      'reported': _reportCounts[recipe.id] ?? 0,
+      'popular': likes >= 200,
+    };
+  }
+
   Future<void> _deleteRecipeAdmin(Map<String, dynamic> item) async {
-    final res = await ApiService.deleteRecipe(int.parse(item['id'] as String));
+    final res = await RecipeService.deleteRecipe(item['id'] as String);
     if (!mounted) return;
     widget.onShowToast?.call(
-      res['message']?.toString() ?? 'Gagal menghapus resep.',
+      res.message.isEmpty ? 'Gagal menghapus resep.' : res.message,
     );
-    if (res['status'] == true) {
+    if (res.ok) {
       // Muat ulang dari database
-      final recipesRes = await ApiService.fetchRecipes();
+      final recipes = await RecipeService.fetchRecipes();
       if (!mounted) return;
-      if (recipesRes['status'] == true) {
-        final rows = (recipesRes['recipes'] as List).cast<Map<String, dynamic>>();
-        setState(() {
-          _adminList = rows.map((row) {
-            final recipe = Recipe.fromDb(row);
-            final likes = recipe.likesCount;
-            final likesStr =
-                likes >= 1000 ? '${(likes / 1000).toStringAsFixed(1)}k' : '$likes';
-            return {
-              'id': recipe.id,
-              'title': recipe.title,
-              'author': recipe.author,
-              'code': '#${recipe.code}',
-              'likes': likesStr,
-              'timeAgo': recipe.publishedAgo,
-              'image': recipe.image,
-              'reported': _reportCounts[int.parse(recipe.id)] ?? 0,
-              'popular': likes >= 200,
-            };
-          }).toList();
-        });
-      }
+      setState(() {
+        _adminList = recipes.map(_mapRecipe).toList();
+      });
     }
   }
 
@@ -140,8 +122,8 @@ class _AdminRecipesScreenState extends State<AdminRecipesScreen> {
                 ),
               ),
               Flexible(
-                child: FutureBuilder<Map<String, dynamic>>(
-                  future: ApiService.fetchReports(),
+                child: FutureBuilder<List<Map<String, dynamic>>>(
+                  future: RecipeService.fetchReports(),
                   builder: (context, snap) {
                     if (snap.connectionState != ConnectionState.done) {
                       return const Padding(
@@ -149,9 +131,7 @@ class _AdminRecipesScreenState extends State<AdminRecipesScreen> {
                         child: CircularProgressIndicator(),
                       );
                     }
-                    final data = snap.data ?? {};
-                    final reports =
-                        (data['reports'] as List? ?? []).cast<Map<String, dynamic>>();
+                    final reports = snap.data ?? const [];
                     if (reports.isEmpty) {
                       return const Padding(
                         padding: EdgeInsets.all(32),
@@ -175,25 +155,26 @@ class _AdminRecipesScreenState extends State<AdminRecipesScreen> {
                             size: 20,
                           ),
                           title: Text(
-                            '${rep['recipe_title'] ?? 'Resep dihapus'}',
+                            '${rep['recipeTitle'] ?? 'Resep dihapus'}',
                             style: const TextStyle(
                                 fontWeight: FontWeight.bold, fontSize: 13),
                           ),
                           subtitle: Text(
-                            '"${rep['reason']}"\nOleh: ${rep['reporter_name'] ?? 'Anonim'} • ${rep['status'] == 'open' ? 'Menunggu tinjauan' : 'Selesai ditinjau'}',
+                            '"${rep['reason']}"\nOleh: ${rep['reporterName'] ?? 'Anonim'} • ${isOpen ? 'Menunggu tinjauan' : 'Selesai ditinjau'}',
                             style: const TextStyle(fontSize: 11),
                           ),
                           isThreeLine: true,
                           trailing: isOpen
                               ? TextButton(
                                   onPressed: () async {
-                                    final res = await ApiService.resolveReport(
-                                        (rep['id'] as num).toInt());
+                                    final res = await RecipeService.resolveReport(
+                                        rep['id'] as String);
                                     if (context.mounted) {
                                       Navigator.pop(context);
                                       widget.onShowToast?.call(
-                                        res['message']?.toString() ??
-                                            'Laporan ditandai selesai.',
+                                        res.message.isEmpty
+                                            ? 'Laporan ditandai selesai.'
+                                            : res.message,
                                       );
                                     }
                                   },
@@ -520,54 +501,22 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
 
   Future<void> _loadUsers() async {
     setState(() => _loading = true);
-    final res = await ApiService.fetchUsers();
+
+    if (!RecipeService.isReady) {
+      setState(() => _loading = false);
+      widget.onShowToast?.call(
+        'Database pengguna tidak tersedia. Jalankan `flutterfire configure` terlebih dahulu.',
+      );
+      return;
+    }
+
+    final users = await RecipeService.fetchUsers();
     if (!mounted) return;
 
-    if (res['status'] == true) {
-      final rows = (res['users'] as List).cast<Map<String, dynamic>>();
-      setState(() {
-        _users = rows.map(_mapUser).toList();
-        _loading = false;
-      });
-    } else {
-      setState(() => _loading = false);
-      widget.onShowToast?.call(res['message']?.toString() ?? 'Gagal memuat data user.');
-    }
-  }
-
-  /// Map baris MySQL (enum lowercase) ke tampilan aplikasi (Indonesia).
-  AdminUser _mapUser(Map<String, dynamic> row) {
-    const statusMap = {
-      'active': 'Aktif',
-      'suspended': 'Ditangguhkan',
-      'new': 'Baru',
-    };
-    const roleMap = {
-      'user': 'Pengguna',
-      'creator': 'Kreator',
-      'admin': 'Admin',
-    };
-    final id = (row['id'] as num).toInt();
-    final created = row['created_at']?.toString() ?? '';
-    final dt = DateTime.tryParse(created);
-    return AdminUser(
-      id: '$id',
-      code: '#USR-${id.toString().padLeft(4, '0')}',
-      name: (row['name'] ?? '') as String,
-      email: (row['email'] ?? '') as String,
-      avatar: (row['avatar'] ?? '') as String,
-      status: statusMap[(row['status'] ?? 'active')] ?? 'Aktif',
-      role: roleMap[(row['role'] ?? 'user')] ?? 'Pengguna',
-      registeredDate: dt != null ? _formatDate(dt) : 'Baru saja',
-    );
-  }
-
-  String _formatDate(DateTime dt) {
-    const bulan = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
-      'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'
-    ];
-    return '${dt.day} ${bulan[dt.month - 1]} ${dt.year}';
+    setState(() {
+      _users = users.map(AdminUser.fromAppUser).toList();
+      _loading = false;
+    });
   }
 
   @override
@@ -590,26 +539,32 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
             TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Nama Lengkap')),
             const SizedBox(height: 10),
             TextField(controller: emailCtrl, decoration: const InputDecoration(labelText: 'Email')),
+            const SizedBox(height: 12),
+            const Text(
+              'Profil dibuat lebih dulu. Akun login aktif setelah yang bersangkutan mendaftar dengan email ini.',
+              style: TextStyle(fontSize: 11, color: AppColors.secondary),
+            ),
           ],
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Batal')),
           ElevatedButton(
             onPressed: () async {
-              if (nameCtrl.text.isNotEmpty && emailCtrl.text.isNotEmpty) {
-                final res = await ApiService.register(
-                  name: nameCtrl.text.trim(),
-                  email: emailCtrl.text.trim(),
-                  password: 'kuliner123', // password default untuk akun yang dibuat admin
-                );
-                if (!mounted) return;
-                Navigator.pop(context);
-                widget.onShowToast?.call(
-                  res['message']?.toString() ?? 'Gagal menambahkan pengguna.',
-                );
-                if (res['status'] == true) {
-                  _loadUsers(); // muat ulang dari database
-                }
+              if (nameCtrl.text.trim().isEmpty || emailCtrl.text.trim().isEmpty) {
+                widget.onShowToast?.call('Mohon isi nama dan email pengguna.');
+                return;
+              }
+              final res = await RecipeService.createPendingUser(
+                name: nameCtrl.text.trim(),
+                email: emailCtrl.text.trim(),
+              );
+              if (!mounted) return;
+              if (context.mounted) Navigator.pop(context);
+              widget.onShowToast?.call(
+                res.message.isEmpty ? 'Gagal menambahkan pengguna.' : res.message,
+              );
+              if (res.ok) {
+                _loadUsers(); // muat ulang dari database
               }
             },
             child: const Text('Simpan'),
@@ -760,22 +715,21 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                       ),
                       OutlinedButton(
                         onPressed: () async {
-                          final action =
-                              user.status == 'Ditangguhkan' ? 'activate' : 'suspend';
-                          final res = await ApiService.updateUserAction(
-                            id: int.parse(user.id),
-                            action: action,
+                          final nextStatus =
+                              user.status == 'Ditangguhkan' ? 'active' : 'suspended';
+                          final res = await RecipeService.setUserStatus(
+                            user.id,
+                            nextStatus,
                           );
                           if (!mounted) return;
-                          if (res['status'] == true) {
+                          if (res.ok) {
                             setState(() {
-                              user.status = user.status == 'Ditangguhkan'
-                                  ? 'Aktif'
-                                  : 'Ditangguhkan';
+                              user.status =
+                                  nextStatus == 'suspended' ? 'Ditangguhkan' : 'Aktif';
                             });
                           }
                           widget.onShowToast?.call(
-                            res['message']?.toString() ?? 'Status gagal diubah.',
+                            res.message.isEmpty ? 'Status gagal diubah.' : res.message,
                           );
                         },
                         style: OutlinedButton.styleFrom(
@@ -792,16 +746,13 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                       ),
                       IconButton(
                         onPressed: () async {
-                          final res = await ApiService.updateUserAction(
-                            id: int.parse(user.id),
-                            action: 'delete',
-                          );
+                          final res = await RecipeService.deleteUser(user.id);
                           if (!mounted) return;
-                          if (res['status'] == true) {
+                          if (res.ok) {
                             setState(() => _users.remove(user));
                           }
                           widget.onShowToast?.call(
-                            res['message']?.toString() ?? 'Gagal menghapus akun.',
+                            res.message.isEmpty ? 'Gagal menghapus akun.' : res.message,
                           );
                         },
                         icon: const Icon(Icons.delete_outline, size: 18, color: AppColors.error),
@@ -907,7 +858,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
           ),
           child: const Row(
             children: [
-              const AppCachedImage(
+              AppCachedImage(
                 imageUrl: MockImages.adminHeadChef,
                 width: 64,
                 height: 64,
@@ -936,11 +887,14 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
             color: AppColors.surfaceContainerLowest,
             borderRadius: BorderRadius.circular(20),
           ),
-          child: ListTile(
-            onTap: _changePasswordDialog,
-            leading: const Icon(Icons.lock_reset, color: AppColors.primary),
-            title: const Text('Ubah Kata Sandi Admin', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-            trailing: const Icon(Icons.chevron_right, size: 20),
+          child: Material(
+            color: Colors.transparent,
+            child: ListTile(
+              onTap: _changePasswordDialog,
+              leading: const Icon(Icons.lock_reset, color: AppColors.primary),
+              title: const Text('Ubah Kata Sandi Admin', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+              trailing: const Icon(Icons.chevron_right, size: 20),
+            ),
           ),
         ),
         const SizedBox(height: 24),
@@ -949,16 +903,21 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
         const SizedBox(height: 8),
         Container(
           decoration: BoxDecoration(
-            color: AppColors.surfaceContainerLowest,
             borderRadius: BorderRadius.circular(20),
           ),
-          child: SwitchListTile(
-            value: widget.darkMode,
-            onChanged: widget.onToggleDarkMode,
-            activeThumbColor: AppColors.primary,
-            title: const Text('Mode Gelap (Dark Mode)', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-            subtitle: const Text('Gunakan tema gelap untuk kenyamanan mata', style: TextStyle(fontSize: 11)),
-            secondary: const Icon(Icons.dark_mode_outlined, color: AppColors.primary),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: Material(
+              color: AppColors.surfaceContainerLowest,
+              child: SwitchListTile(
+                value: widget.darkMode,
+                onChanged: widget.onToggleDarkMode,
+                activeThumbColor: AppColors.primary,
+                title: const Text('Mode Gelap (Dark Mode)', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                subtitle: const Text('Gunakan tema gelap untuk kenyamanan mata', style: TextStyle(fontSize: 11)),
+                secondary: const Icon(Icons.dark_mode_outlined, color: AppColors.primary),
+              ),
+            ),
           ),
         ),
         const SizedBox(height: 28),

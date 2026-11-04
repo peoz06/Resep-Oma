@@ -68,16 +68,25 @@ class _FavoritScreenState extends State<FavoritScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Resep Favorit', style: Theme.of(context).textTheme.headlineLarge),
-                const SizedBox(height: 2),
-                const Text(
-                  'Kumpulan inspirasi masakan yang kamu simpan',
-                  style: TextStyle(color: AppColors.onSurfaceVariant, fontSize: 13),
-                ),
-              ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Resep Favorit',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.headlineLarge,
+                  ),
+                  const SizedBox(height: 2),
+                  const Text(
+                    'Kumpulan inspirasi masakan yang kamu simpan',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: AppColors.onSurfaceVariant, fontSize: 13),
+                  ),
+                ],
+              ),
             ),
             Container(
               width: 44,
@@ -184,9 +193,13 @@ class _FavoritScreenState extends State<FavoritScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              '${favorites.length} Resep Ditampilkan',
-              style: const TextStyle(color: AppColors.onSurfaceVariant, fontSize: 13),
+            Expanded(
+              child: Text(
+                '${favorites.length} Resep Ditampilkan',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: AppColors.onSurfaceVariant, fontSize: 13),
+              ),
             ),
             InkWell(
               onTap: () {
