@@ -83,6 +83,35 @@ Di Firebase Console → **Build → Storage → Get started**:
 - Pilih lokasi yang sama dengan Firestore.
 - Klik **Done**.
 
+### 2h. Google Sign-In di Windows/Linux (OAuth loopback)
+
+Plugin `google_sign_in` **tidak menyediakan implementasi untuk Windows/Linux**, jadi aplikasi
+menjalankan alur OAuth 2.0 sendiri lewat `lib/services/auth_service.dart` →
+`lib/services/google_auth_desktop.dart`:
+
+1. Aplikasi membuka server HTTP kecil di `http://127.0.0.1:<port>/callback`.
+2. Browser sistem dibuka ke halaman `accounts.google.com` dengan
+   `response_type=id_token` (alur implicit, **tanpa `client_secret`** — aman dibagikan di aplikasi desktop).
+3. Google mengembalikan `id_token` ke halaman bridge → diteruskan ke aplikasi.
+4. Aplikasi memverifikasi token: `iss`, `aud` (client ID), `nonce` acak, dan `exp`.
+   Timeout proses: **3 menit**.
+
+**Yang harus disiapkan di Google Cloud Console** (APIs & Services → Credentials →
+OAuth 2.0 Client IDs → buat/klik client bertipe **Web application**, client ID harus sama dengan
+yang dipakai Firebase / `android/app/google-services.json`):
+
+- **Authorized redirect URIs** → tambahkan:
+  ```
+  http://127.0.0.1
+  ```
+  Google secara khusus mengizinkan redirect URI *loopback* dengan port bebas (port yang dipakai
+  aplikasi dibuat dinamis), jadi cukup daftarkan `http://127.0.0.1` (boleh juga `http://localhost`).
+- Client ID tersebut harus persis sama dengan nilai `DesktopGoogleAuth.clientId`
+  (`581136907560-umfvnf7fekg18qtjhmuh07ie3st1nuci.apps.googleusercontent.com`).
+
+Jika redirect URI belum terdaftar, browser akan menampilkan error *"The redirect URI in the
+request, ... does not match the ones authorized for the OAuth client"* dan proses login berhenti.
+
 ## 3. Install FlutterFire CLI & jalankan configure
 
 Di terminal (root project):
@@ -226,6 +255,9 @@ Jika Firebase belum di-`configure`, aplikasi tetap jalan dalam mode offline (dat
 | `MissingPluginException` | Plugin Firebase belum terinstal di platform | `flutter pub get` + rebuild ulang (Android: `cd android && ./gradlew clean`) |
 | `No Firebase App` | `firebase_options.dart` belum ada / `flutterfire configure` belum dijalankan | Jalankan langkah 3 |
 | Google Sign-In gagal (`clientConfigurationError`) | SHA-1 belum ditambahkan di Firebase Console | Tambahkan SHA-1 debug (langkah 2c) |
+| Tombol Google di Windows/Linux tidak membuka browser | `url_launcher` tidak dapat membuka URL | `flutter pub get` lalu build ulang; cek juga tidak ada pemblokir browser |
+| Browser terbuka, tapi muncul error `redirect_uri ... does not match` | `http://127.0.0.1` belum terdaftar di OAuth client | Tambahkan **Authorized redirect URI** `http://127.0.0.1` di Google Cloud Console (langkah 2h) |
+| Setelah menyetujui di browser, aplikasi tetap loading lalu timeout (3 menit) | Browser tidak mengembalikan token (tab ditutup sebelum selesai) | Biarkan halaman konfirmasi terbuka sampai kembali ke aplikasi; atau klik tombol Google lagi |
 | `permission-denied` Firestore | Security Rules belum diatur | Terapkan rules langkah 4 |
 | Aplikasi tetap mode offline meski `flutterfire configure` selesai | `google-services.json` tidak di lokasi yang benar | Simpan di `android/app/google-services.json`, lalu restart |
 

@@ -490,34 +490,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     }
 
     final mobileAppShell = Scaffold(
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(48),
-        child: Container(
-          color: widget.darkMode ? AppColors.darkSurface : AppColors.surface,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          alignment: Alignment.center,
-          child: SafeArea(
-            bottom: false,
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _buildQuickPill('Beranda', () => setState(() { _currentMode = AppMode.user; _userNavIndex = 0; }), _currentMode == AppMode.user && _userNavIndex == 0),
-                  _buildQuickPill('Eksplor', () => setState(() { _currentMode = AppMode.user; _userNavIndex = 1; }), _currentMode == AppMode.user && _userNavIndex == 1),
-                  _buildQuickPill('Unggah', _onTapUpload, _currentMode == AppMode.user && _userNavIndex == 2),
-                  _buildQuickPill('Favorit', () => setState(() { _currentMode = AppMode.user; _userNavIndex = 3; }), _currentMode == AppMode.user && _userNavIndex == 3),
-                  _buildQuickPill('Profil', () => setState(() { _currentMode = AppMode.user; _userNavIndex = 4; }), _currentMode == AppMode.user && _userNavIndex == 4),
-                  _buildQuickPill('Login', () => setState(() { _currentMode = AppMode.auth; _authScreen = 'login'; }), _currentMode == AppMode.auth && _authScreen == 'login'),
-                  _buildQuickPill('Register', () => setState(() { _currentMode = AppMode.auth; _authScreen = 'register'; }), _currentMode == AppMode.auth && _authScreen == 'register'),
-                  _buildQuickPill('Admin Resep', () => setState(() { _currentMode = AppMode.admin; _adminNavIndex = 0; }), _currentMode == AppMode.admin && _adminNavIndex == 0),
-                  _buildQuickPill('Admin Users', () => setState(() { _currentMode = AppMode.admin; _adminNavIndex = 1; }), _currentMode == AppMode.admin && _adminNavIndex == 1),
-                  _buildQuickPill('Admin Settings', () => setState(() { _currentMode = AppMode.admin; _adminNavIndex = 2; }), _currentMode == AppMode.admin && _adminNavIndex == 2),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
       body: Stack(
         children: [
           SafeArea(
@@ -606,31 +578,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           ),
           clipBehavior: Clip.antiAlias,
           child: mobileAppShell,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildQuickPill(String label, VoidCallback onTap, bool active) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 6),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(
-            color: active ? AppColors.primary : AppColors.surfaceContainerHigh,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: active ? Colors.white : AppColors.onSurfaceVariant,
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
         ),
       ),
     );

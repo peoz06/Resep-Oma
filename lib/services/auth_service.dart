@@ -1,9 +1,12 @@
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../models/user_model.dart';
 import 'firebase_service.dart';
+import 'google_auth_desktop.dart';
 
 /// Hasil setiap operasi autentikasi.
 class AuthResult {
@@ -189,12 +192,29 @@ class AuthService {
   static Future<AuthResult> signInWithGoogle() async {
     if (!isReady) return _notConfigured;
     try {
-      final google = GoogleSignIn.instance;
-      await google.initialize();
-      _googleInitialized = true;
+      String? idToken;
 
-      final account = await google.authenticate();
-      final idToken = account.authentication.idToken;
+      if (Platform.isWindows || Platform.isLinux) {
+        // Paket `google_sign_in` tidak menyediakan implementasi untuk
+        // Windows/Linux, jadi alur OAuth loopback lokal dipakai di sini.
+        final desktop = await DesktopGoogleAuth.signIn();
+        if (!desktop.ok) {
+          return AuthResult(
+            ok: false,
+            message: desktop.errorDescription ??
+                'Login Google gagal. Coba lagi.',
+          );
+        }
+        idToken = desktop.idToken;
+      } else {
+        final google = GoogleSignIn.instance;
+        await google.initialize();
+        _googleInitialized = true;
+
+        final account = await google.authenticate();
+        idToken = account.authentication.idToken;
+      }
+
       if (idToken == null || idToken.isEmpty) {
         return const AuthResult(ok: false, message: 'Gagal mendapatkan token Google.');
       }
@@ -232,7 +252,7 @@ class AuthService {
         message: 'Login Google gagal: ${e.description ?? e.code.name}',
       );
     } on FirebaseAuthException catch (e) {
-      return AuthResult(ok: false, message: _mapError(e));
+      return AuthResult(ok: false, message: _mapGoogleError(e));
     } catch (e) {
       return AuthResult(ok: false, message: 'Login Google gagal. $e');
     }
@@ -353,6 +373,30 @@ class AuthService {
       }
     } catch (_) {
       // diabaikan
+    }
+  }
+
+  /// Pesan kesalahan khusus login Google (konteksnya berbeda dengan email,
+  /// mis. `invalid-credential` bukan berarti kata sandi salah).
+  static String _mapGoogleError(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'invalid-credential':
+      case 'invalid-idp-response':
+      case 'missing-or-invalid-nonce':
+      case 'invalid-argument':
+        return 'Login Google gagal. Pastikan provider Google aktif di '
+            'Firebase Console dan SHA-1 aplikasi sudah terdaftar '
+            '(lihat FIREBASE_MIGRATION_GUIDE.md).';
+      case 'operation-not-allowed':
+        return 'Login Google belum diaktifkan di Firebase Console.';
+      case 'network-request-failed':
+        return 'Tidak ada koneksi internet. Coba lagi.';
+      case 'too-many-requests':
+        return 'Terlalu banyak percobaan. Coba lagi beberapa saat lagi.';
+      case 'user-disabled':
+        return 'Akun ini telah dinonaktifkan.';
+      default:
+        return _mapError(e);
     }
   }
 

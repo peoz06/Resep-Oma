@@ -118,10 +118,14 @@ class _LoginScreenState extends State<LoginScreen> {
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420),
-        child: ListView(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-          shrinkWrap: true,
-          children: [
+          // Column di dalam scroll view: konten selalu mulai dari atas dan
+          // bisa di-scroll, sehingga bagian atas (logo / tombol kembali)
+          // tidak pernah terpotong walau tinggi jendela sempit.
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
             // Top Back to Guest option
             if (widget.onBackToGuest != null)
               Align(
@@ -340,7 +344,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ],
             ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -434,10 +439,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420),
-        child: ListView(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-          shrinkWrap: true,
-          children: [
+          // Column di dalam scroll view: konten selalu mulai dari atas dan
+          // bisa di-scroll, sehingga bagian atas (logo / tombol kembali)
+          // tidak pernah terpotong walau tinggi jendela sempit.
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
             // Top Back to Guest option
             if (widget.onBackToGuest != null)
               Align(
@@ -628,7 +637,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
               ],
             ),
-          ],
+            ],
+          ),
         ),
       ),
     );
