@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "581136907560",
+    "project_id": "resep-oma",
+    "storage_bucket": "resep-oma.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:581136907560:android:33553b3eba23cf3d0ca41d",
+        "android_client_info": {
+          "package_name": "com.example.dapurkita"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "581136907560-0fljsmmdaas8tdu1qrm5eme7hnvj3t1p.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.dapurkita",
+            "certificate_hash": "145cf42bfbea6211b6e014176d1b8dc68e1438e5"
+          }
+        },
+        {
+          "client_id": "581136907560-umfvnf7fekg18qtjhmuh07ie3st1nuci.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBe_I0_YnPRfydpnG4bdT2T_jAPDUky71o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "581136907560-umfvnf7fekg18qtjhmuh07ie3st1nuci.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "581136907560-oclvfoseiaqqls7o0nv5kk881md8lhev.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.dapurkita"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

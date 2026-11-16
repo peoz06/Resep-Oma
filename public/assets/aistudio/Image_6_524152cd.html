@@ -1,0 +1,382 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"><meta content="mobile_tab" name="shell-type"><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"><style>@layer base{html,body{width:100vw;margin:0;padding:0;}body{overscroll-behavior:none;}.pb-safe{padding-bottom:env(safe-area-inset-bottom,0px);}.pt-safe{padding-top:env(safe-area-inset-top,0px);}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = {"darkMode":"class","theme":{"extend":{"colors":{"inverse-primary":"#ffb2b8","on-tertiary":"#ffffff","outline":"#8e6f71","on-secondary-fixed":"#1b1b21","primary-container":"#da3054","tertiary-fixed":"#ffdcc4","secondary-fixed-dim":"#c8c5cd","surface-container-low":"#f5f3f7","on-surface":"#1b1b1f","primary":"#b60e3d","primary-fixed":"#ffdadb","surface-container":"#efedf1","tertiary-fixed-dim":"#ffb780","on-secondary":"#ffffff","surface-container-lowest":"#ffffff","on-error-container":"#93000a","tertiary":"#8b4c11","on-error":"#ffffff","surface":"#faf9fd","on-background":"#1b1b1f","on-surface-variant":"#5a4042","surface-variant":"#e3e2e6","secondary-fixed":"#e4e1ea","on-tertiary-fixed":"#2f1400","on-primary-fixed":"#40000f","surface-container-highest":"#e3e2e6","error":"#ba1a1a","on-primary":"#ffffff","surface-container-high":"#e9e7ec","secondary-container":"#e4e1ea","on-tertiary-fixed-variant":"#6f3800","tertiary-container":"#a96428","background":"#faf9fd","secondary":"#5e5e65","outline-variant":"#e2bec0","inverse-surface":"#2f3034","surface-tint":"#ba1340","on-primary-container":"#fffbff","surface-dim":"#dbd9dd","primary-fixed-dim":"#ffb2b8","on-primary-fixed-variant":"#91002d","on-tertiary-container":"#fffbff","surface-bright":"#faf9fd","inverse-on-surface":"#f2f0f4","on-secondary-fixed-variant":"#47464d","on-secondary-container":"#64636b","error-container":"#ffdad6"},"borderRadius":{"DEFAULT":"1rem","lg":"2rem","xl":"3rem","full":"9999px"},"spacing":{"space-md":"1rem","space-xl":"2rem","space-sm":"0.5rem","margin":"1.25rem","gutter":"1rem","space-lg":"1.5rem","space-xs":"0.25rem"},"fontFamily":{"headline-lg":["Plus Jakarta Sans"],"label-md":["Plus Jakarta Sans"],"label-sm":["Plus Jakarta Sans"],"body-sm":["Plus Jakarta Sans"],"headline-xl":["Plus Jakarta Sans"],"headline-sm":["Plus Jakarta Sans"],"body-lg":["Plus Jakarta Sans"],"body-md":["Plus Jakarta Sans"],"headline-md":["Plus Jakarta Sans"],"label-lg":["Plus Jakarta Sans"]},"fontSize":{"headline-lg":["24px",{"lineHeight":"32px","letterSpacing":"-0.02em","fontWeight":"700"}],"label-md":["12px",{"lineHeight":"16px","fontWeight":"600"}],"label-sm":["10px",{"lineHeight":"14px","letterSpacing":"0.02em","fontWeight":"600"}],"body-sm":["12px",{"lineHeight":"16px","fontWeight":"400"}],"headline-xl":["32px",{"lineHeight":"40px","letterSpacing":"-0.03em","fontWeight":"800"}],"headline-sm":["16px",{"lineHeight":"22px","fontWeight":"700"}],"body-lg":["16px",{"lineHeight":"24px","fontWeight":"500"}],"body-md":["14px",{"lineHeight":"20px","fontWeight":"500"}],"headline-md":["20px",{"lineHeight":"28px","letterSpacing":"-0.01em","fontWeight":"700"}],"label-lg":["14px",{"lineHeight":"18px","fontWeight":"600"}]}}}}</script></head><body class="bg-surface font-body-md text-body-md text-on-surface min-h-screen flex flex-col selection:bg-primary-fixed"><header class="fixed top-0 inset-x-0 z-50 bg-surface/85 backdrop-blur-xl pt-safe shadow-[0_1px_12px_rgba(0,0,0,0.03)]"><div class="flex items-center justify-between px-margin pt-space-xs text-on-surface-variant font-label-sm text-label-sm"><span class="font-label-md text-label-md text-on-surface font-semibold">12:34</span><div class="flex items-center gap-space-xs"><span class="material-symbols-outlined text-[16px]">signal_cellular_alt</span><span class="material-symbols-outlined text-[16px]">wifi</span><span class="material-symbols-outlined text-[18px]">battery_full</span></div></div><div class="h-16 px-margin flex items-center justify-between"><div class="flex items-center gap-space-sm"><h1 class="font-headline-md text-headline-md text-on-surface tracking-tight capitalize">Eksplor</h1></div><div class="flex items-center gap-space-sm"><button aria-label="Notifications" class="w-11 h-11 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface transition-colors"><span class="material-symbols-outlined text-[24px]">notifications</span></button><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><main class="flex flex-col relative w-full pt-16 pb-24 bg-surface min-h-screen"><div class="flex flex-col w-full">
+<!-- Search & Filter Section -->
+<section class="px-margin pt-space-xs pb-space-sm flex flex-col gap-space-sm">
+<div class="flex items-center gap-space-sm w-full">
+<div class="flex-1 flex items-center gap-space-sm bg-surface-container-high rounded-full px-space-md py-space-xs text-on-surface-variant focus-within:bg-surface-container-highest transition-colors">
+<span class="material-symbols-outlined text-[20px] text-secondary">search</span>
+<input class="bg-transparent border-none outline-none w-full font-body-md text-body-md text-on-surface placeholder:text-secondary focus:ring-0 p-0" placeholder="Cari resep, bahan, atau koki..." type="text">
+<button aria-label="Clear or voice search" class="w-6 h-6 flex items-center justify-center text-secondary hover:text-on-surface">
+<span class="material-symbols-outlined text-[18px]">mic</span>
+</button>
+</div>
+<button aria-label="Filter Resep" class="w-11 h-11 flex-shrink-0 flex items-center justify-center rounded-full bg-inverse-surface text-surface-bright active:scale-95 transition-transform shadow-sm">
+<span class="material-symbols-outlined text-[20px]">tune</span>
+</button>
+</div>
+<!-- Trending Tags -->
+<div class="flex items-center gap-space-xs overflow-x-auto no-scrollbar py-0.5">
+<div class="flex items-center gap-1 text-primary mr-1 flex-shrink-0 font-label-sm text-label-sm">
+<span class="material-symbols-outlined text-[15px]" style="font-variation-settings: 'FILL' 1;">trending_up</span>
+<span class="font-bold uppercase tracking-wider">Tren:</span>
+</div>
+<button class="px-3 py-1 rounded-full bg-surface-container text-on-surface-variant font-label-sm text-label-sm flex-shrink-0 active:bg-primary-fixed active:text-on-primary-fixed transition-colors">
+        #MentaiRice
+      </button>
+<button class="px-3 py-1 rounded-full bg-surface-container text-on-surface-variant font-label-sm text-label-sm flex-shrink-0 active:bg-primary-fixed active:text-on-primary-fixed transition-colors">
+        #PastaCarbonara
+      </button>
+<button class="px-3 py-1 rounded-full bg-surface-container text-on-surface-variant font-label-sm text-label-sm flex-shrink-0 active:bg-primary-fixed active:text-on-primary-fixed transition-colors">
+        #VeganDiet
+      </button>
+<button class="px-3 py-1 rounded-full bg-surface-container text-on-surface-variant font-label-sm text-label-sm flex-shrink-0 active:bg-primary-fixed active:text-on-primary-fixed transition-colors">
+        #DimsumRumahan
+      </button>
+</div>
+</section>
+<!-- Featured Collections Banner Slider -->
+<section class="mt-space-sm mb-space-md">
+<div class="px-margin flex items-center justify-between mb-space-xs">
+<span class="font-headline-sm text-headline-sm text-on-surface">Koleksi Spesial</span>
+<button class="font-label-lg text-label-lg text-primary hover:text-primary-container font-semibold transition-colors">
+        Lihat Semua
+      </button>
+</div>
+<div class="flex gap-space-md overflow-x-auto px-margin py-space-xs no-scrollbar snap-x snap-mandatory">
+<!-- Collection Banner 1 -->
+<div class="snap-start flex-shrink-0 w-[84vw] max-w-[340px] bg-inverse-surface rounded-lg p-space-md relative overflow-hidden flex items-center justify-between shadow-[0_10px_24px_rgba(30,30,36,0.18)]">
+<div class="relative z-10 flex flex-col justify-between h-full max-w-[62%]">
+<span class="inline-flex items-center gap-1 w-fit bg-primary-container/90 text-on-primary-container px-2.5 py-0.5 rounded-full font-label-sm text-label-sm mb-2">
+<span class="material-symbols-outlined text-[13px]" style="font-variation-settings: 'FILL' 1;">local_fire_department</span>
+            Populer Minggu Ini
+          </span>
+<h3 class="font-headline-sm text-headline-sm text-surface-bright leading-tight mb-2">
+            Kreasi Western Food Otentik
+          </h3>
+<p class="font-body-sm text-body-sm text-surface-variant/80 mb-3 line-clamp-1">
+            18 menu gourmet resto bintang 5
+          </p>
+<button class="inline-flex items-center gap-1 font-label-md text-label-md bg-surface-container-lowest text-inverse-surface px-3 py-1.5 rounded-full w-fit active:scale-95 transition-transform font-bold">
+            Eksplor Koleksi
+            <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</button>
+</div>
+<!-- Circular Hero Dish In Card -->
+<div class="relative w-28 h-28 flex-shrink-0 -mr-2">
+<div class="absolute inset-0 rounded-full bg-primary/20 blur-md"></div>
+<img class="w-full h-full object-cover rounded-full shadow-lg" data-alt="Close-up overhead studio food photography of a gourmet truffle beef steak plated on modern ceramic tableware, surrounded by rosemary sprigs, moody directional light with deep slate shadows, warm cinematic rim light." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCob_q4kXZhFg9S6elWZTi8p4n1QP2m1O2Frfc4XUIg0txOOimO-vw4omAwnKMRMtuUGZjP4THniNsZLNr-_NOTWm_u7bRmZk3rn00Q4S8Vqm-tkgNTGUiCFZZq7NVP_ss9zwTwNM7ebokOA5EwORIauOZanh1r2PB4U9ou646zA3P-PMapg43c3KXa_t0oUHoo0FbN9gjKXJFxZRtZfGKQ2rmxLzQbJiPP9M2Nxm4N9z43iPXDg8GB">
+</div>
+</div>
+<!-- Collection Banner 2 -->
+<div class="snap-start flex-shrink-0 w-[84vw] max-w-[340px] bg-inverse-surface rounded-lg p-space-md relative overflow-hidden flex items-center justify-between shadow-[0_10px_24px_rgba(30,30,36,0.18)]">
+<div class="relative z-10 flex flex-col justify-between h-full max-w-[62%]">
+<span class="inline-flex items-center gap-1 w-fit bg-tertiary-container text-on-tertiary-container px-2.5 py-0.5 rounded-full font-label-sm text-label-sm mb-2">
+<span class="material-symbols-outlined text-[13px]" style="font-variation-settings: 'FILL' 1;">flare</span>
+            Inspirasi Weekend
+          </span>
+<h3 class="font-headline-sm text-headline-sm text-surface-bright leading-tight mb-2">
+            Sajian Hangat Meja Keluarga
+          </h3>
+<p class="font-body-sm text-body-sm text-surface-variant/80 mb-3 line-clamp-1">
+            24 olahan hidangan nusantara
+          </p>
+<button class="inline-flex items-center gap-1 font-label-md text-label-md bg-surface-container-lowest text-inverse-surface px-3 py-1.5 rounded-full w-fit active:scale-95 transition-transform font-bold">
+            Eksplor Koleksi
+            <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</button>
+</div>
+<div class="relative w-28 h-28 flex-shrink-0 -mr-2">
+<div class="absolute inset-0 rounded-full bg-tertiary-fixed/20 blur-md"></div>
+<img class="w-full h-full object-cover rounded-full shadow-lg" data-alt="Delicious traditional Asian soup with slow-braised ribs and scallions, served in an authentic dark porcelain bowl, high-contrast overhead food photography, glossy broth texture with micro chili oil drops." src="https://lh3.googleusercontent.com/aida-public/AB6AXuD_CipZITJviI1dXu2Mxw-uAzP7hCID-hlFqOEg51KFi9vHtK1ylzW2wAcyC_EbszXJwNGImZ064_BlzYPT3oLunmRCqXPHYav5Yf8PrehqKmNNYtrNE8OVfFtR4o0zkjk8NqltGV3P1zVHnunwVH2i0I2rBs47AK2TIbxYeMriyQFfZhCyId_PnAx9cObxd8rlHfJT_yQMT_efaBHEh_8wSdq1IsTQqRa0DK8ueH670n0rAtS7-YpS">
+</div>
+</div>
+</div>
+</section>
+<!-- Category Filter Grid -->
+<section class="px-margin mb-space-lg">
+<div class="flex items-center justify-between mb-space-sm">
+<span class="font-headline-sm text-headline-sm text-on-surface">Kategori Resep</span>
+<span class="font-label-sm text-label-sm text-secondary">6 Kategori</span>
+</div>
+<div class="grid grid-cols-3 gap-space-sm">
+<!-- Category Item 1 -->
+<button class="flex flex-col items-center p-space-sm bg-surface-container-low rounded-xl active:scale-95 transition-transform hover:bg-surface-container text-left group">
+<div class="w-12 h-12 rounded-full bg-surface-container-highest flex items-center justify-center text-primary group-hover:bg-primary-fixed transition-colors mb-1.5">
+<span class="material-symbols-outlined text-[24px]">wb_twilight</span>
+</div>
+<span class="font-label-md text-label-md text-on-surface text-center">Sarapan</span>
+<span class="font-body-sm text-body-sm text-secondary text-[11px]">84 resep</span>
+</button>
+<!-- Category Item 2 -->
+<button class="flex flex-col items-center p-space-sm bg-surface-container-low rounded-xl active:scale-95 transition-transform hover:bg-surface-container text-left group">
+<div class="w-12 h-12 rounded-full bg-surface-container-highest flex items-center justify-center text-primary group-hover:bg-primary-fixed transition-colors mb-1.5">
+<span class="material-symbols-outlined text-[24px]">sunny</span>
+</div>
+<span class="font-label-md text-label-md text-on-surface text-center">Makan Siang</span>
+<span class="font-body-sm text-body-sm text-secondary text-[11px]">152 resep</span>
+</button>
+<!-- Category Item 3 -->
+<button class="flex flex-col items-center p-space-sm bg-surface-container-low rounded-xl active:scale-95 transition-transform hover:bg-surface-container text-left group">
+<div class="w-12 h-12 rounded-full bg-surface-container-highest flex items-center justify-center text-primary group-hover:bg-primary-fixed transition-colors mb-1.5">
+<span class="material-symbols-outlined text-[24px]">dark_mode</span>
+</div>
+<span class="font-label-md text-label-md text-on-surface text-center">Makan Malam</span>
+<span class="font-body-sm text-body-sm text-secondary text-[11px]">110 resep</span>
+</button>
+<!-- Category Item 4 -->
+<button class="flex flex-col items-center p-space-sm bg-surface-container-low rounded-xl active:scale-95 transition-transform hover:bg-surface-container text-left group">
+<div class="w-12 h-12 rounded-full bg-surface-container-highest flex items-center justify-center text-tertiary group-hover:bg-tertiary-fixed transition-colors mb-1.5">
+<span class="material-symbols-outlined text-[24px]">local_bar</span>
+</div>
+<span class="font-label-md text-label-md text-on-surface text-center">Minuman Segar</span>
+<span class="font-body-sm text-body-sm text-secondary text-[11px]">67 resep</span>
+</button>
+<!-- Category Item 5 -->
+<button class="flex flex-col items-center p-space-sm bg-surface-container-low rounded-xl active:scale-95 transition-transform hover:bg-surface-container text-left group">
+<div class="w-12 h-12 rounded-full bg-surface-container-highest flex items-center justify-center text-primary group-hover:bg-primary-fixed transition-colors mb-1.5">
+<span class="material-symbols-outlined text-[24px]">cake</span>
+</div>
+<span class="font-label-md text-label-md text-on-surface text-center">Kue &amp; Dessert</span>
+<span class="font-body-sm text-body-sm text-secondary text-[11px]">95 resep</span>
+</button>
+<!-- Category Item 6 -->
+<button class="flex flex-col items-center p-space-sm bg-surface-container-low rounded-xl active:scale-95 transition-transform hover:bg-surface-container text-left group">
+<div class="w-12 h-12 rounded-full bg-surface-container-highest flex items-center justify-center text-secondary group-hover:bg-secondary-fixed transition-colors mb-1.5">
+<span class="material-symbols-outlined text-[24px]">eco</span>
+</div>
+<span class="font-label-md text-label-md text-on-surface text-center">Diet Sehat</span>
+<span class="font-body-sm text-body-sm text-secondary text-[11px]">73 resep</span>
+</button>
+</div>
+</section>
+<!-- Trending Recipes List Section -->
+<section class="flex flex-col w-full mb-space-lg">
+<div class="px-margin flex items-center justify-between mb-space-sm">
+<div>
+<h2 class="font-headline-sm text-headline-sm text-on-surface tracking-tight">Katalog Resep Tren</h2>
+<p class="font-body-sm text-body-sm text-secondary">Dipilih khusus oleh komunitas koki rumahan</p>
+</div>
+<button class="font-label-lg text-label-lg text-primary hover:text-primary-container font-semibold transition-colors">
+        Semua
+      </button>
+</div>
+<!-- Filter Pills Tabs -->
+<div class="px-margin flex items-center gap-space-xs overflow-x-auto no-scrollbar mb-space-md" id="trend-tabs">
+<button class="px-4 py-1.5 rounded-full bg-inverse-surface text-surface-bright font-label-md text-label-md shadow-sm transition-all tab-btn active" data-tab="populer">
+        Terpopuler
+      </button>
+<button class="px-4 py-1.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-md text-label-md hover:bg-surface-container-highest transition-all tab-btn" data-tab="terbaru">
+        Terbaru
+      </button>
+<button class="px-4 py-1.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-md text-label-md hover:bg-surface-container-highest transition-all tab-btn" data-tab="recook">
+        Paling Banyak Di-recook
+      </button>
+</div>
+<!-- Recipe Dark Slate Cards Stack -->
+<div class="px-margin flex flex-col gap-space-md">
+<!-- Recipe Card 1: Japanese Beef Curry -->
+<article class="w-full bg-inverse-surface rounded-lg p-space-md text-surface-bright relative overflow-hidden shadow-[0_12px_28px_rgba(30,30,36,0.16)] flex flex-col gap-space-sm transition-transform active:scale-[0.99]">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="px-2.5 py-0.5 rounded-full bg-surface-variant/20 text-surface-bright font-label-sm text-label-sm">
+              Asian Food
+            </span>
+<span class="inline-flex items-center gap-1 text-primary-container font-label-md text-label-md"><span class="material-symbols-outlined text-[14px]" style="font-variation-settings: &quot;FILL&quot; 1;">thumb_up</span>1.2k</span>
+</div>
+<!-- Favorite Roundel Floating Button -->
+<button aria-label="Simpan ke favorit" class="w-9 h-9 rounded-full bg-surface-variant/20 backdrop-blur-md flex items-center justify-center text-primary-fixed-dim hover:text-primary active:scale-90 transition-all fav-btn">
+<span class="material-symbols-outlined text-[19px]">favorite</span>
+</button>
+</div>
+<div class="flex items-center gap-space-md my-1">
+<!-- Circular Framed Plate Photography -->
+<div class="relative w-28 h-28 flex-shrink-0">
+<div class="w-full h-full rounded-full overflow-hidden p-1 bg-surface-container-highest/10 shadow-inner">
+<img class="w-full h-full object-cover rounded-full" data-alt="Top down overhead shot of Japanese Beef Curry with tender beef chunks, carrots, and potatoes in rich savory brown demi-glace sauce, served on a round pristine ceramic plate with fluffy jasmine rice, dramatic dark slate backdrop." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBmZOR7RoMDyiwyzKWAau4Rgvg5MzKNoH9ceRPCcCnnwOBoZ7Z6Wr-gybl5-XjhuSHe6MkiGRwklpTzLq6uItpRrP4ZvxuUVIxekW5s4pjCdCoRRiMzKxApbmWlJLrLhCq1OGw1GSeY0xkq3GA-SvlXZgTaE7d5FMbGEngGJ4QDhFJsfBi7lg0LZqkDIanZFP5c4y1SPqVKAyjFm4xiRMhdiJJUX90WQazqpjsFrG0znIWUTcKIwWJ6">
+</div>
+</div>
+<!-- Recipe Details & Metadata -->
+<div class="flex-1 flex flex-col justify-center min-w-0">
+<h3 class="font-headline-sm text-headline-sm text-surface-bright font-bold leading-snug truncate">
+              Japanese Beef Curry
+            </h3>
+<div class="flex items-center gap-2 mt-1 mb-2">
+<div class="w-5 h-5 rounded-full overflow-hidden bg-surface-variant/30 flex-shrink-0">
+<img class="w-full h-full object-cover" data-alt="Portrait of a friendly Japanese male chef in modern minimalist kitchen jacket, warm lighting and shallow depth of field." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBhf5jD8VWCep9qYNPWI69bf0kF3PArbpXz10v2uIktMPTUF9hDIzShJ__vzlTURKooWJvsMeOHdVQc7UyzzbEKiUmOJETVVvnzi3wMD9iykNdmg2vZXkOKBJ6ylG_fYZM-TTmv7EhCLJ6LjZY9DYgnGzddhkl-bEqFTajDzGS9ETZecDllYxGhN5oaQMUTYbfSeyYcj2_0Tkv6OrzVZ8EuDFaAHe1L0XJtEv3O-lqMi-_EQFgHF8dJ">
+</div>
+<span class="font-body-sm text-body-sm text-surface-variant/80 truncate">Chef Kenji</span>
+</div>
+<!-- Stats Chips -->
+<div class="flex items-center gap-space-sm text-surface-variant/70 font-label-sm text-label-sm">
+<span class="inline-flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">schedule</span>
+                45 Menit
+              </span>
+<span class="inline-flex items-center gap-1 text-primary-fixed">
+<span class="material-symbols-outlined text-[14px]">repeat</span>
+                1.2k recook
+              </span>
+</div>
+</div>
+</div>
+<!-- Recipe Micro Action Bar -->
+<div class="pt-2 border-none flex items-center justify-between text-surface-variant/70">
+<span class="font-label-sm text-label-sm">Tingkat: <strong class="text-surface-bright">Menengah</strong></span>
+<button class="inline-flex items-center gap-1 text-primary-fixed-dim hover:text-surface-bright font-label-md text-label-md">
+            Lihat Resep
+            <span class="material-symbols-outlined text-[16px]">chevron_right</span>
+</button>
+</div>
+</article>
+<!-- Recipe Card 2: Creamy Truffle Pasta -->
+<article class="w-full bg-inverse-surface rounded-lg p-space-md text-surface-bright relative overflow-hidden shadow-[0_12px_28px_rgba(30,30,36,0.16)] flex flex-col gap-space-sm transition-transform active:scale-[0.99]">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="px-2.5 py-0.5 rounded-full bg-surface-variant/20 text-surface-bright font-label-sm text-label-sm">
+              Western Food
+            </span>
+<span class="inline-flex items-center gap-1 text-primary-container font-label-md text-label-md"><span class="material-symbols-outlined text-[14px]" style="font-variation-settings: &quot;FILL&quot; 1;">thumb_up</span>890</span>
+</div>
+<!-- Favorite Roundel Floating Button -->
+<button aria-label="Simpan ke favorit" class="w-9 h-9 rounded-full bg-surface-variant/20 backdrop-blur-md flex items-center justify-center text-primary-fixed-dim hover:text-primary active:scale-90 transition-all fav-btn">
+<span class="material-symbols-outlined text-[19px]">favorite</span>
+</button>
+</div>
+<div class="flex items-center gap-space-md my-1">
+<!-- Circular Framed Plate Photography -->
+<div class="relative w-28 h-28 flex-shrink-0">
+<div class="w-full h-full rounded-full overflow-hidden p-1 bg-surface-container-highest/10 shadow-inner">
+<img class="w-full h-full object-cover rounded-full" data-alt="Top view macro food photography of Creamy Truffle Tagliatelle Pasta swirling in center of deep round dark plate, shaved black truffles and freshly grated parmesan, aromatic steam, luxurious restaurant aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCpgiCvEG6XyhTltGKI7Hd40vyYLOZ__SHdNh2k0qMKRT5udtl9o61r2yj1anlowbMWBJkc4PGkFeZc0nzQESMXBsblXs0L8wCWZwKyPvQLvcG_hxXRn-OEqTgy2VgG9PvAG6z5QMcMSnwulNXZgnOpuD9KjHSadO4BQm-V4QwTWmWgzd3ArszmYlLk-ZIjI_Ig1e4JEaJkkX966UKHQlMYzaxwCi9_hbi0zGyTUI4enDSk4nDbeCD9">
+</div>
+</div>
+<!-- Recipe Details & Metadata -->
+<div class="flex-1 flex flex-col justify-center min-w-0">
+<h3 class="font-headline-sm text-headline-sm text-surface-bright font-bold leading-snug truncate">
+              Creamy Truffle Pasta
+            </h3>
+<div class="flex items-center gap-2 mt-1 mb-2">
+<div class="w-5 h-5 rounded-full overflow-hidden bg-surface-variant/30 flex-shrink-0">
+<img class="w-full h-full object-cover" data-alt="Headshot of smiling female culinary chef Sarah Michaels with tied brown hair, warm indoor bistro lighting, soft bokeh background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuB-WtPWGGbCHhQVTXhCgwqevoqJXM95oXwNDTElVg73dNTuMADvbpSSENw2_1KgfraYbeFI_ilqHZ7G1xNg1WwftM-fwEiMkGXCGCp2jFKmTaXSYWUCWcGZoAap5-nr-YO4aUEEYrEHypswDQp3MLH_IMPYGszmBb5zJXoQueP547SmEjuasAZu99xQlViTk1yXo1KY8cx-t0YSi0egjyr6AalWwqtz93GphvTRdsJE4ma4MMbtfhT0">
+</div>
+<span class="font-body-sm text-body-sm text-surface-variant/80 truncate">Sarah Michaels</span>
+</div>
+<!-- Stats Chips -->
+<div class="flex items-center gap-space-sm text-surface-variant/70 font-label-sm text-label-sm">
+<span class="inline-flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">schedule</span>
+                25 Menit
+              </span>
+<span class="inline-flex items-center gap-1 text-primary-fixed">
+<span class="material-symbols-outlined text-[14px]">repeat</span>
+                890 recook
+              </span>
+</div>
+</div>
+</div>
+<div class="pt-2 border-none flex items-center justify-between text-surface-variant/70">
+<span class="font-label-sm text-label-sm">Tingkat: <strong class="text-surface-bright">Mudah</strong></span>
+<button class="inline-flex items-center gap-1 text-primary-fixed-dim hover:text-surface-bright font-label-md text-label-md">
+            Lihat Resep
+            <span class="material-symbols-outlined text-[16px]">chevron_right</span>
+</button>
+</div>
+</article>
+<!-- Recipe Card 3: Ayam Bakar Madu Pedas -->
+<article class="w-full bg-inverse-surface rounded-lg p-space-md text-surface-bright relative overflow-hidden shadow-[0_12px_28px_rgba(30,30,36,0.16)] flex flex-col gap-space-sm transition-transform active:scale-[0.99]">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="px-2.5 py-0.5 rounded-full bg-surface-variant/20 text-surface-bright font-label-sm text-label-sm">
+              Asian Food
+            </span>
+<span class="inline-flex items-center gap-1 text-primary-container font-label-md text-label-md"><span class="material-symbols-outlined text-[14px]" style="font-variation-settings: &quot;FILL&quot; 1;">thumb_up</span>2.4k</span>
+</div>
+<!-- Favorite Roundel Floating Button -->
+<button aria-label="Simpan ke favorit" class="w-9 h-9 rounded-full bg-surface-variant/20 backdrop-blur-md flex items-center justify-center text-primary-fixed-dim hover:text-primary active:scale-90 transition-all fav-btn">
+<span class="material-symbols-outlined text-[19px]">favorite</span>
+</button>
+</div>
+<div class="flex items-center gap-space-md my-1">
+<!-- Circular Framed Plate Photography -->
+<div class="relative w-28 h-28 flex-shrink-0">
+<div class="w-full h-full rounded-full overflow-hidden p-1 bg-surface-container-highest/10 shadow-inner">
+<img class="w-full h-full object-cover rounded-full" data-alt="Overhead shot of Indonesian spicy honey grilled chicken thigh served with cucumber slices and lime wedges on a circular dark artisanal platter, glistening caramelized glaze, charcoal grilled highlights." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCUFfRt-lRVitfPfDiGbkfyhhmfpB2WIz0I7_fNzIhzUxzSunjkuZQ70K_yBRZZhJDcqCrsRyRvZ6A2zjb7r1a0_vWjRuvk4V5bjEVQ9dSWLwmt4Oulk_ngl20Y03sDxMHIXels4HniG5MDGalbay-wO2G-5RvEzz_CikICyc3FqZb1RAzgjr8eJqXbfF__c_GVIIJifBBtAH04EiWpbwUyXi527odzatx78DUs7B7ZIO8Oo7t3Pu0W">
+</div>
+</div>
+<!-- Recipe Details & Metadata -->
+<div class="flex-1 flex flex-col justify-center min-w-0">
+<h3 class="font-headline-sm text-headline-sm text-surface-bright font-bold leading-snug truncate">
+              Ayam Bakar Madu Pedas
+            </h3>
+<div class="flex items-center gap-2 mt-1 mb-2">
+<div class="w-5 h-5 rounded-full overflow-hidden bg-surface-variant/30 flex-shrink-0">
+<img class="w-full h-full object-cover" data-alt="Portrait of an enthusiastic Indonesian home cook Budi Santoso wearing a dark apron, natural kitchen daylight." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDJMUFEO5W4D9fa2yovcByIBKe9AR13VSzg4tEZbWNWge7XkycD9WCmwvM3bMW0tVP2xNDwubUYzYtYX_h3WoTCdO-C_DheBbNdXS4z_5JUNOGJE5agV-alqnMVVVxg5LkQiXjZA47txn_cZRHqCZzLftUjflsSet6tSoZz0DbCW-OnlPEdS7QhZkkmoSrykBOBY6L_NFFAAOSQeojG7NU2_4GtT6tE2xyC6wQS48sCemt2TEuCa2-I">
+</div>
+<span class="font-body-sm text-body-sm text-surface-variant/80 truncate">Budi Santoso</span>
+</div>
+<!-- Stats Chips -->
+<div class="flex items-center gap-space-sm text-surface-variant/70 font-label-sm text-label-sm">
+<span class="inline-flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">schedule</span>
+                40 Menit
+              </span>
+<span class="inline-flex items-center gap-1 text-primary-fixed">
+<span class="material-symbols-outlined text-[14px]">repeat</span>
+                2.4k recook
+              </span>
+</div>
+</div>
+</div>
+<div class="pt-2 border-none flex items-center justify-between text-surface-variant/70">
+<span class="font-label-sm text-label-sm">Tingkat: <strong class="text-surface-bright">Menengah</strong></span>
+<button class="inline-flex items-center gap-1 text-primary-fixed-dim hover:text-surface-bright font-label-md text-label-md">
+            Lihat Resep
+            <span class="material-symbols-outlined text-[16px]">chevron_right</span>
+</button>
+</div>
+</article>
+</div>
+</section>
+<!-- Interactive Client-side Script -->
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // Favorite toggling micro-interaction
+      const favButtons = document.querySelectorAll('.fav-btn');
+      favButtons.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const icon = btn.querySelector('.material-symbols-outlined');
+          const isFilled = icon.style.fontVariationSettings?.includes("'FILL' 1");
+          if (isFilled) {
+            icon.style.fontVariationSettings = "'FILL' 0";
+            btn.classList.remove('text-primary');
+            btn.classList.add('text-primary-fixed-dim');
+          } else {
+            icon.style.fontVariationSettings = "'FILL' 1";
+            btn.classList.add('text-primary');
+            btn.classList.remove('text-primary-fixed-dim');
+            // Little bounce feedback
+            btn.classList.add('scale-125');
+            setTimeout(() => btn.classList.remove('scale-125'), 180);
+          }
+        });
+      });
+
+      // Filter Tab Switcher
+      const tabs = document.querySelectorAll('.tab-btn');
+      tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+          tabs.forEach(t => {
+            t.classList.remove('bg-inverse-surface', 'text-surface-bright', 'shadow-sm');
+            t.classList.add('bg-surface-container-high', 'text-on-surface-variant');
+          });
+          tab.classList.remove('bg-surface-container-high', 'text-on-surface-variant');
+          tab.classList.add('bg-inverse-surface', 'text-surface-bright', 'shadow-sm');
+        });
+      });
+    });
+  </script>
+</div></main><nav class="fixed bottom-0 inset-x-0 z-50 pb-safe bg-surface/90 backdrop-blur-xl shadow-[0_-6px_20px_rgba(0,0,0,0.05)]" data-active-classes="text-primary font-bold"><div class="flex items-center justify-between h-16 px-margin"><a class="flex flex-col items-center justify-center w-14 h-12 text-on-surface-variant hover:text-primary transition-all duration-200" data-path="beranda" href="#"><span class="material-symbols-outlined text-[24px]">home</span><span class="font-label-sm text-label-sm mt-0.5">Beranda</span></a><a aria-current="page" class="flex flex-col items-center justify-center w-14 h-12 transition-all duration-200 text-primary font-bold" data-path="eksplor" href="#"><span class="material-symbols-outlined text-[24px]">explore</span><span class="font-label-sm text-label-sm mt-0.5">Eksplor</span></a><a class="flex flex-col items-center justify-center w-14 h-12 text-on-surface-variant hover:text-primary transition-all duration-200" data-path="unggah-resep" href="#"><div class="w-10 h-10 rounded-xl bg-surface-container-high flex items-center justify-center text-on-surface hover:bg-primary hover:text-on-primary transition-all shadow-[0_2px_8px_rgba(0,0,0,0.06)]"><span class="material-symbols-outlined text-[22px]">add</span></div></a><a class="flex flex-col items-center justify-center w-14 h-12 text-on-surface-variant hover:text-primary transition-all duration-200" data-path="favorit" href="#"><span class="material-symbols-outlined text-[24px]">favorite</span><span class="font-label-sm text-label-sm mt-0.5">Favorit</span></a><a class="flex flex-col items-center justify-center w-14 h-12 text-on-surface-variant hover:text-primary transition-all duration-200" data-path="profil" href="#"><span class="material-symbols-outlined text-[24px]">person</span><span class="font-label-sm text-label-sm mt-0.5">Profil</span></a></div></nav>
+
+
+
+</body></html>

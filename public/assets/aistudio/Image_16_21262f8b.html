@@ -1,0 +1,363 @@
+<!DOCTYPE html><html lang="id" style=""><head><meta charset="utf-8"><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"><meta content="mobile_tab" name="shell-type"><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = { darkMode: "class", theme: { extend: { colors: { "background": "#faf9fd", "surface-container-low": "#f5f3f7", "outline-variant": "#e2bec0", "on-error": "#ffffff", "primary-container": "#da3054", "surface-bright": "#faf9fd", "surface-container-high": "#e9e7ec", "secondary-container": "#e4e1ea", "error": "#ba1a1a", "surface-tint": "#ba1340", "on-secondary": "#ffffff", "inverse-primary": "#ffb2b8", "surface-container-lowest": "#ffffff", "on-primary-fixed-variant": "#91002d", "surface-variant": "#e3e2e6", "on-primary": "#ffffff", "error-container": "#ffdad6", "primary-fixed": "#ffdadb", "on-primary-container": "#fffbff", "on-error-container": "#93000a", "primary": "#b60e3d", "tertiary-container": "#a96428", "on-surface": "#1b1b1f", "primary-fixed-dim": "#ffb2b8", "tertiary-fixed-dim": "#ffb780", "surface": "#faf9fd", "surface-container-highest": "#e3e2e6", "inverse-surface": "#2f3034", "on-tertiary-fixed-variant": "#6f3800", "on-tertiary-fixed": "#2f1400", "tertiary": "#8b4c11", "secondary": "#5e5e65", "surface-container": "#efedf1", "on-tertiary-container": "#fffbff", "on-background": "#1b1b1f", "on-tertiary": "#ffffff", "secondary-fixed-dim": "#c8c5cd", "on-surface-variant": "#5a4042", "tertiary-fixed": "#ffdcc4", "on-secondary-fixed": "#1b1b21", "outline": "#8e6f71", "on-secondary-fixed-variant": "#47464d", "inverse-on-surface": "#f2f0f4", "surface-dim": "#dbd9dd", "on-primary-fixed": "#40000f", "secondary-fixed": "#e4e1ea", "on-secondary-container": "#64636b" }, borderRadius: { DEFAULT: "1rem", lg: "2rem", xl: "3rem", full: "9999px" }, spacing: { "space-lg": "1.5rem", "margin": "1.25rem", "space-md": "1rem", "space-xl": "2rem", "space-xs": "0.25rem", "space-sm": "0.5rem", "gutter": "1rem" }, fontFamily: { "body-lg": ["Plus Jakarta Sans"], "label-md": ["Plus Jakarta Sans"], "headline-lg": ["Plus Jakarta Sans"], "headline-sm": ["Plus Jakarta Sans"], "label-sm": ["Plus Jakarta Sans"], "headline-xl": ["Plus Jakarta Sans"], "body-sm": ["Plus Jakarta Sans"], "body-md": ["Plus Jakarta Sans"], "headline-md": ["Plus Jakarta Sans"], "label-lg": ["Plus Jakarta Sans"] }, fontSize: { "body-lg": ["16px", { lineHeight: "24px", fontWeight: "500" }], "label-md": ["12px", { lineHeight: "16px", fontWeight: "600" }], "headline-lg": ["24px", { lineHeight: "32px", letterSpacing: "-0.02em", fontWeight: "700" }], "headline-sm": ["16px", { lineHeight: "22px", fontWeight: "700" }], "label-sm": ["10px", { lineHeight: "14px", letterSpacing: "0.02em", fontWeight: "600" }], "headline-xl": ["32px", { lineHeight: "40px", letterSpacing: "-0.03em", fontWeight: "800" }], "body-sm": ["12px", { lineHeight: "16px", fontWeight: "400" }], "body-md": ["14px", { lineHeight: "20px", fontWeight: "500" }], "headline-md": ["20px", { lineHeight: "28px", letterSpacing: "-0.01em", fontWeight: "700" }], "label-lg": ["14px", { lineHeight: "18px", fontWeight: "600" }] } } } }</script><style>@layer base{html,body{width:100vw;margin:0;padding:0;background-color:#faf9fd;color:#1b1b1f;}body{overscroll-behavior:none;-webkit-tap-highlight-color:transparent;}.pb-safe{padding-bottom:env(safe-area-inset-bottom,0px);}.pt-safe{padding-top:env(safe-area-inset-top,0px);}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style></head><body class="bg-surface font-body-md text-on-surface flex flex-col min-h-screen"><header class="fixed top-0 inset-x-0 z-50 bg-surface/85 backdrop-blur-xl pt-safe shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="h-16 px-margin flex items-center justify-between"><div class="flex flex-col justify-center gap-0.5"><div class="flex items-center gap-space-xs"><span class="px-space-xs py-0.5 rounded-full bg-primary/10 text-primary font-label-sm text-label-sm uppercase tracking-wider font-bold">Admin Panel</span></div><h1 class="font-headline-sm text-headline-sm text-on-surface font-bold tracking-tight">Kelola Pengguna</h1></div><div class="flex items-center gap-space-sm"><button class="relative w-11 h-11 rounded-full flex items-center justify-center text-on-surface-variant hover:text-on-surface active:scale-95 transition-transform" type="button"><span class="material-symbols-outlined text-[24px]">notifications</span><span class="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-primary ring-2 ring-surface"></span></button><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-sm"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><main class="flex-1 flex flex-col relative w-full pt-16 pb-20 bg-surface"><div class="flex flex-col w-full pb-8">
+<!-- Top Intro Section -->
+<div class="px-margin pt-2 pb-4 flex flex-col gap-1">
+<div class="flex items-center justify-between">
+<div>
+<h2 class="font-headline-md text-headline-md text-on-surface tracking-tight">Daftar Akun Terdaftar</h2>
+<p class="font-body-sm text-body-sm text-secondary mt-0.5">Kelola hak akses, peran, dan status seluruh akun dalam ekosistem</p>
+</div>
+<div class="w-10 h-10 rounded-full bg-primary-fixed flex items-center justify-center text-primary shadow-sm shrink-0">
+<span class="material-symbols-outlined text-[22px]">manage_accounts</span>
+</div>
+</div>
+</div>
+<!-- Metric Badges Row (Horizontal Scrollable) -->
+<div class="px-margin mb-5">
+<div class="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 -my-1">
+<!-- Metric: Total -->
+<div class="flex items-center gap-2 px-3 py-2 rounded-full bg-surface-container-high shadow-sm shrink-0">
+<span class="w-2 h-2 rounded-full bg-on-surface"></span>
+<span class="font-label-sm text-label-sm text-secondary uppercase tracking-wider">Total</span>
+<span class="font-headline-sm text-headline-sm text-on-surface font-bold">12.450</span>
+</div>
+<!-- Metric: Aktif -->
+<div class="flex items-center gap-2 px-3 py-2 rounded-full bg-surface-container-lowest shadow-sm shrink-0">
+<span class="w-2 h-2 rounded-full bg-[#10b981]"></span>
+<span class="font-label-sm text-label-sm text-secondary uppercase tracking-wider">Aktif</span>
+<span class="font-headline-sm text-headline-sm text-on-surface font-bold">11.890</span>
+</div>
+<!-- Metric: Baru -->
+<div class="flex items-center gap-2 px-3 py-2 rounded-full bg-surface-container-lowest shadow-sm shrink-0">
+<span class="w-2 h-2 rounded-full bg-[#f59e0b]"></span>
+<span class="font-label-sm text-label-sm text-secondary uppercase tracking-wider">Baru</span>
+<span class="font-headline-sm text-headline-sm text-on-surface font-bold">1.240</span>
+</div>
+<!-- Metric: Ditangguhkan -->
+<div class="flex items-center gap-2 px-3 py-2 rounded-full bg-error-container shadow-sm shrink-0">
+<span class="w-2 h-2 rounded-full bg-error"></span>
+<span class="font-label-sm text-label-sm text-on-error-container uppercase tracking-wider">Ditangguhkan</span>
+<span class="font-headline-sm text-headline-sm text-on-error-container font-bold">15</span>
+</div>
+</div>
+</div>
+<!-- Action Bar & Search -->
+<div class="px-margin flex flex-col gap-3 mb-5">
+<!-- Top Action Row -->
+<div class="flex items-center justify-between gap-2">
+<!-- Search Bar -->
+<div class="relative flex-1">
+<span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-secondary text-[20px]">search</span>
+<input class="w-full h-11 pl-10 pr-4 rounded-full bg-surface-container-lowest text-on-surface font-body-sm text-body-sm placeholder:text-secondary/70 shadow-sm outline-none focus:bg-surface-container-high transition-colors" id="user-search-input" placeholder="Cari nama, email, role, atau ID..." type="text">
+</div>
+<!-- Add User CTA -->
+<button class="h-11 px-4 rounded-full bg-primary-container text-on-primary-container font-label-md text-label-md flex items-center gap-1.5 shadow-sm active:scale-95 transition-transform shrink-0" onclick="triggerAddUserModal()" type="button">
+<span class="material-symbols-outlined text-[18px]">person_add</span>
+<span class="">Tambah</span>
+</button>
+<!-- Advanced Filters / Export Button -->
+<button class="w-11 h-11 rounded-full bg-surface-container-lowest text-on-surface font-label-md flex items-center justify-center shadow-sm active:scale-95 transition-transform shrink-0" title="Opsi Filter &amp; Ekspor" type="button">
+<span class="material-symbols-outlined text-[20px]">tune</span>
+</button>
+</div>
+<!-- Filter Chips Row -->
+<div class="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5">
+<button class="px-3.5 py-1.5 rounded-full bg-inverse-surface text-inverse-on-surface font-label-sm text-label-sm font-semibold shadow-sm shrink-0 active:scale-95 transition-all">
+        Semua (12.4k)
+      </button>
+<button class="px-3.5 py-1.5 rounded-full bg-surface-container-lowest text-on-surface-variant font-label-sm text-label-sm font-semibold shadow-sm hover:bg-surface-container-high shrink-0 active:scale-95 transition-all">
+        Aktif (11.8k)
+      </button>
+<button class="px-3.5 py-1.5 rounded-full bg-surface-container-lowest text-on-surface-variant font-label-sm text-label-sm font-semibold shadow-sm hover:bg-surface-container-high shrink-0 active:scale-95 transition-all">
+        Kreator (3.2k)
+      </button>
+<button class="px-3.5 py-1.5 rounded-full bg-surface-container-lowest text-on-surface-variant font-label-sm text-label-sm font-semibold shadow-sm hover:bg-surface-container-high shrink-0 active:scale-95 transition-all">
+        Baru (1.2k)
+      </button>
+<button class="px-3.5 py-1.5 rounded-full bg-surface-container-lowest text-on-surface-variant font-label-sm text-label-sm font-semibold shadow-sm hover:bg-surface-container-high shrink-0 active:scale-95 transition-all">
+        Ditangguhkan (15)
+      </button>
+</div>
+</div>
+<!-- Table Container (Horizontal Scrollable for Mobile Friendly Viewing) -->
+<div class="px-margin mb-4">
+<div class="bg-surface-container-lowest rounded-2xl shadow-sm overflow-hidden flex flex-col">
+<!-- Responsive Table Scroll Area -->
+<div class="overflow-x-auto no-scrollbar">
+<table class="w-full text-left border-collapse min-w-[620px]">
+<!-- Table Header -->
+<thead>
+<tr class="bg-surface-container-low text-secondary font-label-sm text-label-sm uppercase tracking-wider">
+<th class="py-3 pl-4 pr-3 font-semibold">Pengguna</th>
+<th class="py-3 px-3 font-semibold">Tindakan</th>
+<th class="py-3 px-3 font-semibold">Status</th>
+<th class="py-3 px-3 font-semibold">Terdaftar</th>
+<th class="py-3 pr-4 pl-3 text-right font-semibold">Aksi</th>
+</tr>
+</thead>
+<!-- Table Body -->
+<tbody class="divide-y-0 text-on-surface font-body-sm text-body-sm">
+<!-- Row 1: Sarah Michaels -->
+<tr class="hover:bg-surface-container-low/60 transition-colors">
+<td class="py-3.5 pl-4 pr-3">
+<div class="flex items-center gap-3">
+<div class="relative w-10 h-10 rounded-full overflow-hidden shrink-0 shadow-xs bg-surface-container">
+<img class="w-full h-full object-cover" data-alt="Editorial close-up portrait of a cheerful female pastry chef named Sarah Michaels with gentle studio lighting and soft warm tones." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDiMJQyto6iYoms-7Rd7m7Tv5gXuY2Aldr1v8QME-vJyK2I1QtjQQ87Uc8168izygyY09-0TVCDhs_bFEcmFc9s3t6JM0E5ARxzPacsAWYttR8bPHTZXeZRgoX46UgNPiYEjkbWvYKYe-TIx21HktrIs4-ZyCAGXYMyQejNduyyYOuHeoE0R_n9LJevkBdX4lgLxMKhHMZoeugONuuGHUrfq3YUwv1eF54ff2yXvIEYIPpNm_cES3i1">
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-label-lg text-label-lg text-on-surface font-bold truncate">Sarah Michaels</span>
+<span class="font-body-sm text-body-sm text-secondary truncate">sarah.m@gmail.com</span>
+<span class="font-label-sm text-label-sm text-primary font-semibold tracking-wide mt-0.5">#USR-1021</span>
+</div>
+</div>
+</td>
+<td class="py-3.5 px-3 whitespace-nowrap"><div class="flex items-center gap-1.5 whitespace-nowrap"><button type="button" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-secondary-container hover:bg-surface-container-high text-on-secondary-container font-label-sm text-label-sm font-semibold active:scale-95 transition-all" title="Nonaktifkan akun"><span class="material-symbols-outlined text-[14px]">block</span><span class="">Nonaktifkan</span></button><button type="button" class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-error-container hover:bg-error text-on-error-container hover:text-on-error active:scale-95 transition-all" title="Hapus akun"><span class="material-symbols-outlined text-[14px]">delete</span></button></div></td>
+<td class="py-3.5 px-3 whitespace-nowrap">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-label-sm text-label-sm font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+                  Aktif
+                </span>
+</td>
+<td class="py-3.5 px-3 whitespace-nowrap text-secondary font-body-sm text-body-sm">
+                12 Mei 2024
+              </td>
+<td class="py-3.5 pr-4 pl-3 whitespace-nowrap text-right">
+<button class="w-8 h-8 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center text-on-surface-variant active:scale-95 transition-transform ml-auto" type="button">
+<span class="material-symbols-outlined text-[18px]">more_vert</span>
+</button>
+</td>
+</tr>
+<!-- Row 2: Budi Santoso -->
+<tr class="bg-surface-container-low/20 hover:bg-surface-container-low/60 transition-colors">
+<td class="py-3.5 pl-4 pr-3">
+<div class="flex items-center gap-3">
+<div class="relative w-10 h-10 rounded-full overflow-hidden shrink-0 shadow-xs bg-surface-container">
+<img class="w-full h-full object-cover" data-alt="Modern profile photograph of an Indonesian man named Budi Santoso wearing a clean casual shirt in warm natural light." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDys-ObtXe1Y6uUima1l4-OWdY-LXDU1gLRFFP26rIn-Vl5gRPqpaZJ6hSUGhX-0lO-f-AasFssdA4BCeiv1plxNk74tg2YH8shnRQbGjytjhyYIh_H2cXX9XtEvQ5KYRK2-yfai0xvqIJ-NVfkd0hKh2fv7dXwYOpJaA5-gpY9lnuXHmrcm5nV7M9Rpn8Ua82cHRw51LFTuHoHX39Aj9jTHRKmNM5p9LQFPZNSF3CSfhuh54bhJruX">
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-label-lg text-label-lg text-on-surface font-bold truncate">Budi Santoso</span>
+<span class="font-body-sm text-body-sm text-secondary truncate">budi.s@outlook.com</span>
+<span class="font-label-sm text-label-sm text-primary font-semibold tracking-wide mt-0.5">#USR-1045</span>
+</div>
+</div>
+</td>
+<td class="py-3.5 px-3 whitespace-nowrap"><div class="flex items-center gap-1.5 whitespace-nowrap"><button type="button" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-secondary-container hover:bg-surface-container-high text-on-secondary-container font-label-sm text-label-sm font-semibold active:scale-95 transition-all" title="Nonaktifkan akun"><span class="material-symbols-outlined text-[14px]">block</span><span class="">Nonaktifkan</span></button><button type="button" class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-error-container hover:bg-error text-on-error-container hover:text-on-error active:scale-95 transition-all" title="Hapus akun"><span class="material-symbols-outlined text-[14px]">delete</span></button></div></td>
+<td class="py-3.5 px-3 whitespace-nowrap">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-label-sm text-label-sm font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+                  Aktif
+                </span>
+</td>
+<td class="py-3.5 px-3 whitespace-nowrap text-secondary font-body-sm text-body-sm">
+                18 Mei 2024
+              </td>
+<td class="py-3.5 pr-4 pl-3 whitespace-nowrap text-right">
+<button class="w-8 h-8 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center text-on-surface-variant active:scale-95 transition-transform ml-auto" type="button">
+<span class="material-symbols-outlined text-[18px]">more_vert</span>
+</button>
+</td>
+</tr>
+<!-- Row 3: Chef Kenji -->
+<tr class="hover:bg-surface-container-low/60 transition-colors">
+<td class="py-3.5 pl-4 pr-3">
+<div class="flex items-center gap-3">
+<div class="relative w-10 h-10 rounded-full overflow-hidden shrink-0 shadow-xs bg-surface-container">
+<img class="w-full h-full object-cover" data-alt="Striking modern portrait of an authentic Japanese chef Kenji wearing black chef coat looking confident with minimalist aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCjrWKGFViS_Ns2IVhL1m_HZyseNIzBAjTPWmL2t9mFvCUTH_n-UMbSwFwmZduPe967-ZQK-0C9w15Q2_Ows1E_wElWoymBLvfKWC0UiOUKQjXmjzGLnZE6-AXjLd6vet-K0Fy3mxW0RzrOQQypmf49RTV2n9GdIaoyJevu9QXVmg1nZQrZDL4quxVnzdhY3JRIqRYK6ngPjwtbg49TMLzlMho2JXrJBLkjVI_VkjApVr8GV8KiQs-0">
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-label-lg text-label-lg text-on-surface font-bold truncate">Chef Kenji</span>
+<span class="font-body-sm text-body-sm text-secondary truncate">kenji.food@kitchen.id</span>
+<span class="font-label-sm text-label-sm text-primary font-semibold tracking-wide mt-0.5">#USR-1090</span>
+</div>
+</div>
+</td>
+<td class="py-3.5 px-3 whitespace-nowrap"><div class="flex items-center gap-1.5 whitespace-nowrap"><button type="button" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-secondary-container hover:bg-surface-container-high text-on-secondary-container font-label-sm text-label-sm font-semibold active:scale-95 transition-all" title="Nonaktifkan akun"><span class="material-symbols-outlined text-[14px]">block</span><span class="">Nonaktifkan</span></button><button type="button" class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-error-container hover:bg-error text-on-error-container hover:text-on-error active:scale-95 transition-all" title="Hapus akun"><span class="material-symbols-outlined text-[14px]">delete</span></button></div></td>
+<td class="py-3.5 px-3 whitespace-nowrap">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-label-sm text-label-sm font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+                  Aktif
+                </span>
+</td>
+<td class="py-3.5 px-3 whitespace-nowrap text-secondary font-body-sm text-body-sm">
+                01 Jun 2024
+              </td>
+<td class="py-3.5 pr-4 pl-3 whitespace-nowrap text-right">
+<button class="w-8 h-8 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center text-on-surface-variant active:scale-95 transition-transform ml-auto" type="button">
+<span class="material-symbols-outlined text-[18px]">more_vert</span>
+</button>
+</td>
+</tr>
+<!-- Row 4: Rian Pratama (Ditangguhkan) -->
+<tr class="bg-surface-container-low/20 hover:bg-surface-container-low/60 transition-colors">
+<td class="py-3.5 pl-4 pr-3">
+<div class="flex items-center gap-3">
+<div class="relative w-10 h-10 rounded-full overflow-hidden shrink-0 shadow-xs bg-surface-container">
+<img class="w-full h-full object-cover" data-alt="Editorial portrait avatar of a young man named Rian Pratama in a neutral indoor setting with soft shadows." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBFyLyiVj7llzUtU2kxQtV9RXng8IRco6xN38Anu7l9V06brTLhrqe_6FUt6PrFRyuXE69Pql-Qd_5nhhU58gq_u_6TS1wfL94sSmxD3xaQ31jIdtTNhtfgSiuaiLvx9505o-4AEkUzUX8msno-pyit1hYpk1_xs9ls8e18AvarhblIp38A7MKVD6T7UnvqG09g4bl3sOP5_tEYlYrwYJW-2mPVyf24UceLX3NQrGnNfYnCbumqcYYE">
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-label-lg text-label-lg text-on-surface font-bold truncate">Rian Pratama</span>
+<span class="font-body-sm text-body-sm text-secondary truncate">rian99@spam.xyz</span>
+<span class="font-label-sm text-label-sm text-primary font-semibold tracking-wide mt-0.5">#USR-1132</span>
+</div>
+</div>
+</td>
+<td class="py-3.5 px-3 whitespace-nowrap"><div class="flex items-center gap-1.5 whitespace-nowrap"><button type="button" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-secondary-container hover:bg-surface-container-high text-on-secondary-container font-label-sm text-label-sm font-semibold active:scale-95 transition-all" title="Nonaktifkan akun"><span class="material-symbols-outlined text-[14px]">block</span><span class="">Nonaktifkan</span></button><button type="button" class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-error-container hover:bg-error text-on-error-container hover:text-on-error active:scale-95 transition-all" title="Hapus akun"><span class="material-symbols-outlined text-[14px]">delete</span></button></div></td>
+<td class="py-3.5 px-3 whitespace-nowrap">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-error-container text-on-error-container font-label-sm text-label-sm font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-error"></span>
+                  Ditangguhkan
+                </span>
+</td>
+<td class="py-3.5 px-3 whitespace-nowrap text-secondary font-body-sm text-body-sm">
+                15 Jun 2024
+              </td>
+<td class="py-3.5 pr-4 pl-3 whitespace-nowrap text-right">
+<button class="w-8 h-8 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center text-on-surface-variant active:scale-95 transition-transform ml-auto" type="button">
+<span class="material-symbols-outlined text-[18px]">more_vert</span>
+</button>
+</td>
+</tr>
+<!-- Row 5: Dewi Lestari (Baru) -->
+<tr class="hover:bg-surface-container-low/60 transition-colors">
+<td class="py-3.5 pl-4 pr-3">
+<div class="flex items-center gap-3">
+<div class="relative w-10 h-10 rounded-full overflow-hidden shrink-0 shadow-xs bg-surface-container">
+<img class="w-full h-full object-cover" data-alt="Warm natural portrait photo of an Asian woman named Dewi Lestari smiling warmly with organic culinary background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDuUFZG4WiflYqgrPJ_TwPk18zO_F_jB3j6iGNZN4ySX4JrWMLe58xmTVOHvxmYdWd2ug7BBJvHtLd-CTPRRyKHw59erpABDYDduLV6xNm1hgrMwtn692oFMcplV9kPK3KnLal1haxbRM4-EJnYKWckiQ-hfRvQ7UGskyk9pMrceOPio0D9yCgY2WNVlmN_mlG4eS8CKvApVTMFUdqkAOhpdmhzzap0RB9B3o_OKIwHsN8t21WNMnt8">
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-label-lg text-label-lg text-on-surface font-bold truncate">Dewi Lestari</span>
+<span class="font-body-sm text-body-sm text-secondary truncate">dewi.lestari@gmail.com</span>
+<span class="font-label-sm text-label-sm text-primary font-semibold tracking-wide mt-0.5">#USR-1188</span>
+</div>
+</div>
+</td>
+<td class="py-3.5 px-3 whitespace-nowrap"><div class="flex items-center gap-1.5 whitespace-nowrap"><button type="button" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-secondary-container hover:bg-surface-container-high text-on-secondary-container font-label-sm text-label-sm font-semibold active:scale-95 transition-all" title="Nonaktifkan akun"><span class="material-symbols-outlined text-[14px]">block</span><span class="">Nonaktifkan</span></button><button type="button" class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-error-container hover:bg-error text-on-error-container hover:text-on-error active:scale-95 transition-all" title="Hapus akun"><span class="material-symbols-outlined text-[14px]">delete</span></button></div></td>
+<td class="py-3.5 px-3 whitespace-nowrap">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 font-label-sm text-label-sm font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-amber-600"></span>
+                  Baru
+                </span>
+</td>
+<td class="py-3.5 px-3 whitespace-nowrap text-secondary font-body-sm text-body-sm">
+                20 Jun 2024
+              </td>
+<td class="py-3.5 pr-4 pl-3 whitespace-nowrap text-right">
+<button class="w-8 h-8 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center text-on-surface-variant active:scale-95 transition-transform ml-auto" type="button">
+<span class="material-symbols-outlined text-[18px]">more_vert</span>
+</button>
+</td>
+</tr>
+<!-- Row 6: Andi Wijaya (Admin) -->
+<tr class="bg-surface-container-low/20 hover:bg-surface-container-low/60 transition-colors">
+<td class="py-3.5 pl-4 pr-3">
+<div class="flex items-center gap-3">
+<div class="relative w-10 h-10 rounded-full overflow-hidden shrink-0 shadow-xs bg-surface-container">
+<img class="w-full h-full object-cover" data-alt="Professional modern studio headshot of a stylish male administrator Andi Wijaya with sharp specs and dark background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDhBwK1zdMfEws6qaMw2z-f7g7AQOZuSV5SufPZOpmI6yW4wCEo5PUztzzngaO6PfvqAIJSs_B542JSdd8zNDS04ZtVohXKpApCoWP4yg2MR-DKH_0JwFLtOYc7al915Iz8r-seOZKCaPBEDmGpG0UrmZ7NxitQOvwkvYi7khouAyTZ2HrIU3PH4_SueuO23ens-kl4EwK_GCllA_OnHaLSmg_bhTfYmAzGbG38cDXYHc998oK4IHPW">
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-label-lg text-label-lg text-on-surface font-bold truncate">Andi Wijaya</span>
+<span class="font-body-sm text-body-sm text-secondary truncate">andi.w@kuliner.id</span>
+<span class="font-label-sm text-label-sm text-primary font-semibold tracking-wide mt-0.5">#ADM-0042</span>
+</div>
+</div>
+</td>
+<td class="py-3.5 px-3 whitespace-nowrap"><div class="flex items-center gap-1.5 whitespace-nowrap"><button type="button" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-secondary-container hover:bg-surface-container-high text-on-secondary-container font-label-sm text-label-sm font-semibold active:scale-95 transition-all" title="Nonaktifkan akun"><span class="material-symbols-outlined text-[14px]">block</span><span class="">Nonaktifkan</span></button><button type="button" class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-error-container hover:bg-error text-on-error-container hover:text-on-error active:scale-95 transition-all" title="Hapus akun"><span class="material-symbols-outlined text-[14px]">delete</span></button></div></td>
+<td class="py-3.5 px-3 whitespace-nowrap">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-label-sm text-label-sm font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+                  Aktif
+                </span>
+</td>
+<td class="py-3.5 px-3 whitespace-nowrap text-secondary font-body-sm text-body-sm">
+                05 Jan 2024
+              </td>
+<td class="py-3.5 pr-4 pl-3 whitespace-nowrap text-right">
+<button class="w-8 h-8 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center text-on-surface-variant active:scale-95 transition-transform ml-auto" type="button">
+<span class="material-symbols-outlined text-[18px]">more_vert</span>
+</button>
+</td>
+</tr>
+<!-- Row 7: Maya Putri -->
+<tr class="hover:bg-surface-container-low/60 transition-colors">
+<td class="py-3.5 pl-4 pr-3">
+<div class="flex items-center gap-3">
+<div class="relative w-10 h-10 rounded-full overflow-hidden shrink-0 shadow-xs bg-surface-container">
+<img class="w-full h-full object-cover" data-alt="Creative foodie portrait of Maya Putri enjoying an artisan dessert in a soft aesthetic kitchen cafe." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCrRhyCjDKDp3lsdgipyL9MlyCh22-L4_-njuSv9llyqzNfKK_OF9sInshf5nTCF8QrkdLWGu3oR7AQZCBlSLfyGDdVNukvIQmrmoojBMrQqJ4nMO3Opfqn3kS1lh8hUNxFBZCDkXbAbCiIxTjZALFaW5zfoRuVXKPpKEuqmeYv9yZHTEmDY9ivCea3itO6sTwcL2BBnhMBN5SVaHN13Gk1n2IrY395l_QTqHfi5UXwUCrmZptS6tVF">
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-label-lg text-label-lg text-on-surface font-bold truncate">Maya Putri</span>
+<span class="font-body-sm text-body-sm text-secondary truncate">maya.putri@foodie.com</span>
+<span class="font-label-sm text-label-sm text-primary font-semibold tracking-wide mt-0.5">#USR-1250</span>
+</div>
+</div>
+</td>
+<td class="py-3.5 px-3 whitespace-nowrap"><div class="flex items-center gap-1.5 whitespace-nowrap"><button type="button" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-secondary-container hover:bg-surface-container-high text-on-secondary-container font-label-sm text-label-sm font-semibold active:scale-95 transition-all" title="Nonaktifkan akun"><span class="material-symbols-outlined text-[14px]">block</span><span class="">Nonaktifkan</span></button><button type="button" class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-error-container hover:bg-error text-on-error-container hover:text-on-error active:scale-95 transition-all" title="Hapus akun"><span class="material-symbols-outlined text-[14px]">delete</span></button></div></td>
+<td class="py-3.5 px-3 whitespace-nowrap">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-label-sm text-label-sm font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+                  Aktif
+                </span>
+</td>
+<td class="py-3.5 px-3 whitespace-nowrap text-secondary font-body-sm text-body-sm">
+                22 Jun 2024
+              </td>
+<td class="py-3.5 pr-4 pl-3 whitespace-nowrap text-right">
+<button class="w-8 h-8 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center text-on-surface-variant active:scale-95 transition-transform ml-auto" type="button">
+<span class="material-symbols-outlined text-[18px]">more_vert</span>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Pagination & Footnote Footer -->
+<div class="p-3.5 bg-surface-container-low flex flex-col sm:flex-row items-center justify-between gap-3">
+<!-- Range Indicator -->
+<div class="text-secondary font-label-sm text-label-sm text-center sm:text-left">
+          Menampilkan <span class="font-semibold text-on-surface">1-7</span> dari <span class="font-semibold text-on-surface">12.450</span> akun
+        </div>
+<!-- Pagination Controls -->
+<div class="flex items-center gap-1">
+<!-- Prev Button -->
+<button class="w-8 h-8 rounded-full bg-surface-container-lowest text-secondary hover:text-on-surface flex items-center justify-center shadow-xs disabled:opacity-40" disabled="" type="button">
+<span class="material-symbols-outlined text-[18px]">chevron_left</span>
+</button>
+<!-- Page 1 (Active) -->
+<button class="w-8 h-8 rounded-full bg-primary-container text-on-primary-container font-label-sm text-label-sm font-bold flex items-center justify-center shadow-xs">
+            1
+          </button>
+<!-- Page 2 -->
+<button class="w-8 h-8 rounded-full bg-surface-container-lowest text-on-surface font-label-sm text-label-sm font-semibold flex items-center justify-center hover:bg-surface-container shadow-xs">
+            2
+          </button>
+<!-- Page 3 -->
+<button class="w-8 h-8 rounded-full bg-surface-container-lowest text-on-surface font-label-sm text-label-sm font-semibold flex items-center justify-center hover:bg-surface-container shadow-xs">
+            3
+          </button>
+<!-- Ellipsis -->
+<span class="px-1 text-secondary font-label-sm">...</span>
+<!-- Page 178 -->
+<button class="w-8 h-8 rounded-full bg-surface-container-lowest text-on-surface font-label-sm text-label-sm font-semibold flex items-center justify-center hover:bg-surface-container shadow-xs">
+            178
+          </button>
+<!-- Next Button -->
+<button class="w-8 h-8 rounded-full bg-surface-container-lowest text-on-surface flex items-center justify-center shadow-xs hover:bg-surface-container active:scale-95" type="button">
+<span class="material-symbols-outlined text-[18px]">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Quick Administrative Action Utility Footers -->
+
+</div>
+<script>
+  function triggerAddUserModal() {
+    const input = document.getElementById('user-search-input');
+    if (input) {
+      input.focus();
+    }
+  }
+</script></main><nav class="fixed bottom-0 inset-x-0 z-50 pb-safe bg-surface/90 backdrop-blur-xl shadow-[0_-4px_20px_rgba(0,0,0,0.04)]" data-active-classes="text-primary font-bold"><div class="flex justify-around items-center h-16 px-margin"><a aria-current="page" class="flex flex-col items-center justify-center gap-1 min-w-[44px] min-h-[44px] px-space-sm transition-colors text-primary font-bold" data-path="kelola-pengguna" href="#"><span class="material-symbols-outlined text-[24px]">group</span><span class="font-label-md text-label-md">Users</span></a><a class="flex flex-col items-center justify-center gap-1 min-w-[44px] min-h-[44px] px-space-sm text-on-surface-variant hover:text-on-surface transition-colors" data-path="kelola-resep" href="#"><span class="material-symbols-outlined text-[24px]">menu_book</span><span class="font-label-md text-label-md">Recipes</span></a><a class="flex flex-col items-center justify-center gap-1 min-w-[44px] min-h-[44px] px-space-sm text-on-surface-variant hover:text-on-surface transition-colors" data-path="pengaturan-sistem" href="#"><span class="material-symbols-outlined text-[24px]">tune</span><span class="font-label-md text-label-md">Settings</span></a></div></nav>
+
+</body></html>
