@@ -1,5 +1,9 @@
 # Panduan Migrasi Firebase — Resep Oma (dapurkita)
 
+> Pembaruan: unggahan foto sekarang menggunakan Supabase Storage. Ikuti
+> `SUPABASE_STORAGE.md` untuk konfigurasi dan batas akses. Bagian Firebase Storage
+> di bawah adalah catatan migrasi lama; Firebase Auth dan Firestore tetap dipakai.
+
 File ini adalah lanjutan dari rewrite service layer yang sudah selesai.
 Semua layanan Firebase sudah ditulis di `lib/services/` dan siap dipakai
 setelah project Firebase dibuat dan `flutterfire configure` dijalankan.
@@ -11,7 +15,7 @@ setelah project Firebase dibuat dan `flutterfire configure` dijalankan.
 | `lib/services/firebase_service.dart` | Inisialisasi Firebase + siap-mode offline bila belum terkonfigurasi |
 | `lib/services/auth_service.dart` | Auth: Email/Password, Google Sign-In, Anonymous, restore sesi, update profil |
 | `lib/services/recipe_service.dart` | Firestore: resep, favorit, laporan, pengguna (admin via field `role`) |
-| `lib/services/storage_service.dart` | Firebase Storage + `image_picker` untuk unggah foto resep & avatar |
+| `lib/services/storage_service.dart` | Supabase Storage + `image_picker` untuk unggah foto resep & avatar |
 | `lib/models/user_model.dart` | Model `AppUser` (profil `users/{uid}`, role via field bukan custom claim) |
 | `lib/models/recipe_model.dart` | `Recipe.fromFirestore` (ID String), `AdminUser.fromAppUser` |
 | `lib/screens/main_navigation_screen.dart` | Uid String, auth state listener, guest mode, Firebase bootstrap |
@@ -67,7 +71,7 @@ Salin **SHA1** yang muncul. Masukkan ke Firebase Console → Project settings �
 Di Firebase Console → **Build → Authentication → Get started** → tab **Sign-in method**:
 - **Email/Password**: Enable.
 - **Google**: Enable (pilih email support project Anda).
-- **Anonymous**: Enable (untuk mode tamu/guest).
+- **Anonymous**: tidak diperlukan untuk mode tamu; resep bisa dibaca tanpa sesi.
 
 Simpan masing-masing.
 
@@ -170,42 +174,15 @@ Dan untuk Google Sign-In iOS, tambahkan URL scheme dengan `REVERSED_CLIENT_ID` d
 
 ## 4. Security Rules (Firestore & Storage)
 
-Di Firebase Console → **Build → Firestore Database → Rules** → ganti dengan:
+Rules Firestore berada di **`firestore.rules`** dan sudah live melalui Firebase
+Console berdasarkan konfirmasi pemilik project. Agent tidak menjalankan deploy
+atau memverifikasi Console langsung. Jangan gabungkan dengan rules permisif lama.
+Ikuti pemeriksaan data dan pengujian dalam **`MODERASI_FIREBASE.md`** untuk
+perubahan berikutnya. Admin pertama diatur manual pada `users/<UID Auth>` dengan
+`role:admin,status:active` melalui Firestore Console.
 
-```rules
-service cloud.firestore {
-  match /databases/{database}/documents {
-    // Pengguna hanya bisa baca/tulis profil sendiri
-    match /users/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
-      // Admin bisa baca semua profil
-      allow read: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
-    }
-
-    // Resep: semua bisa baca, hanya pemulis yang bisa tulis/hapus
-    match /recipes/{recipeId} {
-      allow read: if true;
-      allow create: if request.auth != null && !request.auth.token.anonymous;
-      allow update, delete: if request.auth != null &&
-        resource.data.authorId == request.auth.uid;
-    }
-
-    // Favorit: milik pengguna sendiri
-    match /favorites/{favId} {
-      allow read, write: if request.auth != null && request.auth.uid == request.resource.data.uid;
-    }
-
-    // Laporan: semua user terautentikasi bisa buat; admin bisa baca/update/hapus
-    match /reports/{reportId} {
-      allow create: if request.auth != null && !request.auth.token.anonymous;
-      allow read, update, delete: if request.auth != null &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
-    }
-  }
-}
-```
-
-Di Firebase Console → **Build → Storage → Rules** → ganti dengan:
+Contoh berikut hanya untuk **Firebase Storage lama**, bukan Supabase yang dipakai
+aplikasi sekarang. Untuk upload saat ini, ikuti `SUPABASE_STORAGE.md`.
 
 ```rules
 service firebase.storage {
@@ -225,11 +202,11 @@ service firebase.storage {
 }
 ```
 
-Klik **Publish** setelah setiap perubahan.
+Jangan menerapkan contoh Storage lama untuk mengamankan upload Supabase.
 
 ## 5. Mode tamu (guest) & Anonymous Auth
 
-- Saat aplikasi dibuka tanpa sesi, `MainNavigationScreen` otomatis memanggil `AuthService.signInAnonymously()`.
+- Saat aplikasi dibuka tanpa sesi, `MainNavigationScreen` tetap menjadi tamu tanpa membuat sesi anonim.
 - Tamu bisa jelajahi resep; unggah/favorit/laporan memerlukan login nyata (Email/Password atau Google).
 - Kode secara sengaja **tidak** menggunakan custom claim untuk admin; admin ditandai lewat field `role` di dokumen `users/{uid}` (lihat `AppUser.role`).
 
@@ -237,10 +214,15 @@ Klik **Publish** setelah setiap perubahan.
 
 ```bash
 flutter pub get
-flutter run
+cp supabase.example.json supabase.local.json
+# Isi URL project dan publishable key pada supabase.local.json terlebih dahulu.
+flutter run --dart-define-from-file=supabase.local.json
 ```
 
 Jika Firebase belum di-`configure`, aplikasi tetap jalan dalam mode offline (data contoh `MockData`), sesuai keputusan awal.
+
+Jangan commit `supabase.local.json`. Lihat bagian **Cara menjalankan** di
+`README.md` dan `SUPABASE_STORAGE.md` untuk konfigurasi upload.
 
 ## 7. File yang perlu Anda siapkan sendiri (hasil dari langkah 2 & 3)
 
@@ -261,4 +243,5 @@ Jika Firebase belum di-`configure`, aplikasi tetap jalan dalam mode offline (dat
 | `permission-denied` Firestore | Security Rules belum diatur | Terapkan rules langkah 4 |
 | Aplikasi tetap mode offline meski `flutterfire configure` selesai | `google-services.json` tidak di lokasi yang benar | Simpan di `android/app/google-services.json`, lalu restart |
 
-Selamat! Setelah langkah 2–3 selesai, aplikasi Resep Oma sudah berjalan sepenuhnya pada Firebase (Auth, Firestore, Storage) sambil tetap mempertahankan UI/UX asli dan mode tamu.
+Konfigurasi belum membuktikan alur live berfungsi. Jalankan verifikasi dalam
+`MODERASI_FIREBASE.md`; foto kini disimpan di Supabase, bukan Firebase Storage.
