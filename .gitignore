@@ -3,7 +3,9 @@ build/
 dist/
 coverage/
 .dart_tool/
+.flutter-plugins-dependencies
 .DS_Store
 *.log
 .env*
 !.env.example
+/supabase.local.json
