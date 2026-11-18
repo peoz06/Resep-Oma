@@ -1,6 +1,7 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../theme/app_theme.dart';
 
 /// Gambar universal aplikasi.
@@ -83,12 +84,20 @@ class AppCachedImage extends StatelessWidget {
       final path = imageUrl.startsWith('file://')
           ? Uri.parse(imageUrl).toFilePath()
           : imageUrl;
-      imageWidget = Image.file(
-        File(path),
-        width: width,
-        height: height,
-        fit: fit,
-        errorBuilder: (context, error, stackTrace) => _placeholder(),
+      imageWidget = FutureBuilder<Uint8List>(
+        future: XFile(path).readAsBytes(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) return _placeholder();
+          final bytes = snapshot.data;
+          if (bytes == null) return _loadingPlaceholder();
+          return Image.memory(
+            bytes,
+            width: width,
+            height: height,
+            fit: fit,
+            errorBuilder: (context, error, stackTrace) => _placeholder(),
+          );
+        },
       );
     }
 

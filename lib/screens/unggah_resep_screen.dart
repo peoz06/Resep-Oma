@@ -8,6 +8,7 @@ import '../theme/app_theme.dart';
 import '../widgets/app_cached_image.dart';
 
 class UnggahResepScreen extends StatefulWidget {
+  final Recipe? recipe;
   final VoidCallback onPublishRecipe;
   final String? userId;
   final String userName;
@@ -16,6 +17,7 @@ class UnggahResepScreen extends StatefulWidget {
 
   const UnggahResepScreen({
     super.key,
+    this.recipe,
     required this.onPublishRecipe,
     this.userId,
     this.userName = 'Anonim',
@@ -33,20 +35,39 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
   final TextEditingController _descController = TextEditingController(
       text:
           'Perpaduan salmon panggang juicy dengan saus mentai gurih-creamy yang ditorch hingga wangi smoky menggugah selera.');
-  final TextEditingController _timeController = TextEditingController(text: '30 Menit');
-  final TextEditingController _servingsController = TextEditingController(text: '2-3 Porsi');
-  final TextEditingController _difficultyController = TextEditingController(text: 'Sedang');
+  final TextEditingController _timeController =
+      TextEditingController(text: '30 Menit');
+  final TextEditingController _servingsController =
+      TextEditingController(text: '2-3 Porsi');
+  final TextEditingController _difficultyController =
+      TextEditingController(text: 'Sedang');
 
   String _selectedCategory = 'Asian Food';
-  final List<String> _categories = ['Asian Food', 'Western', 'Healthy Diet', 'Dessert', 'Nusantara'];
+  final List<String> _categories = [
+    'Asian Food',
+    'Western',
+    'Healthy Diet',
+    'Dessert',
+    'Nusantara'
+  ];
 
   String _heroPhoto = MockImages.salmonMentaiHero;
-  List<String> _subPhotos = [MockImages.salmonMentaiSub1, MockImages.salmonMentaiSub2];
+  List<String> _subPhotos = [
+    MockImages.salmonMentaiSub1,
+    MockImages.salmonMentaiSub2
+  ];
 
   final List<Ingredient> _ingredients = [
-    Ingredient(id: '1', name: 'Beras Jepang / Japonica Rice', amount: '300 gram'),
-    Ingredient(id: '2', name: 'Fillet Ikan Salmon Segar', amount: '200 gram (potong dadu)'),
-    Ingredient(id: '3', name: 'Mayones Jepang (Kewpie) & Tobiko', amount: '4 sdm mayo + 2 sdm tobiko'),
+    Ingredient(
+        id: '1', name: 'Beras Jepang / Japonica Rice', amount: '300 gram'),
+    Ingredient(
+        id: '2',
+        name: 'Fillet Ikan Salmon Segar',
+        amount: '200 gram (potong dadu)'),
+    Ingredient(
+        id: '3',
+        name: 'Mayones Jepang (Kewpie) & Tobiko',
+        amount: '4 sdm mayo + 2 sdm tobiko'),
   ];
 
   final List<CookingStep> _steps = [
@@ -66,11 +87,35 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
 
   bool _isPublishing = false;
 
+  @override
+  void initState() {
+    super.initState();
+    final recipe = widget.recipe;
+    if (recipe == null) return;
+    _titleController.text = recipe.title;
+    _descController.text = recipe.description;
+    _timeController.text = recipe.time;
+    _servingsController.text = recipe.servings;
+    _difficultyController.text = recipe.difficulty;
+    _selectedCategory = recipe.category;
+    if (!_categories.contains(recipe.category)) {
+      _categories.add(recipe.category);
+    }
+    _heroPhoto = recipe.image;
+    _subPhotos = List.of(recipe.secondaryImages ?? const <String>[]);
+    _ingredients
+      ..clear()
+      ..addAll(recipe.ingredients);
+    _steps
+      ..clear()
+      ..addAll(recipe.steps);
+  }
+
   Future<void> _pickHeroPhoto() async {
     final source = await _showImageSourceSheet();
     if (source == null) return;
     final file = await StorageService.pickImage(source: source);
-    if (file == null) return;
+    if (file == null || !mounted) return;
     setState(() => _heroPhoto = file.path);
     widget.onShowToast?.call('Foto utama resep berhasil diperbarui');
   }
@@ -79,7 +124,7 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
     final source = await _showImageSourceSheet();
     if (source == null) return;
     final file = await StorageService.pickImage(source: source);
-    if (file == null) return;
+    if (file == null || !mounted) return;
     setState(() {
       if (_subPhotos.length >= 2) {
         _subPhotos[0] = file.path;
@@ -118,18 +163,21 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
             ),
             const SizedBox(height: 8),
             ListTile(
-              leading: const Icon(Icons.photo_library_outlined, color: AppColors.primary),
+              leading: const Icon(Icons.photo_library_outlined,
+                  color: AppColors.primary),
               title: const Text('Pilih dari Galeri'),
               onTap: () => Navigator.pop(context, ImageSource.gallery),
             ),
             ListTile(
-              leading: const Icon(Icons.photo_camera_outlined, color: AppColors.primary),
+              leading: const Icon(Icons.photo_camera_outlined,
+                  color: AppColors.primary),
               title: const Text('Ambil dengan Kamera'),
               onTap: () => Navigator.pop(context, ImageSource.camera),
             ),
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Batal', style: TextStyle(color: AppColors.secondary)),
+              child: const Text('Batal',
+                  style: TextStyle(color: AppColors.secondary)),
             ),
           ],
         ),
@@ -138,32 +186,42 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
   }
 
   /// Kembalikan URL siap pakai: foto http dibiarkan, foto lokal diunggah
-  /// ke Firebase Storage. null = unggah gagal.
-  Future<String?> _resolvePhoto(String photo, String folder) async {
-    if (photo.isEmpty) return null;
+  /// ke Supabase Storage. Kegagalan upload ditampilkan tanpa menghapus file.
+  Future<String> _resolvePhoto(String photo) async {
+    if (photo.isEmpty) {
+      throw const ImageUploadException('Pilih foto resep terlebih dahulu.');
+    }
     if (AppCachedImage.isNetworkSource(photo)) return photo;
-    return StorageService.uploadFilePath(photo, folder: folder);
+    return StorageService.uploadImage(
+      XFile(photo),
+      bucket: 'recipe-images',
+      uid: widget.userId!,
+    );
   }
 
-  void _addIngredientDialog() {
-    final nameCtrl = TextEditingController();
-    final amountCtrl = TextEditingController();
+  void _addIngredientDialog([Ingredient? ingredient]) {
+    final nameCtrl = TextEditingController(text: ingredient?.name);
+    final amountCtrl = TextEditingController(text: ingredient?.amount);
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Tambah Bahan Masakan', style: TextStyle(fontSize: 16)),
+        title: Text(
+            ingredient == null ? 'Tambah Bahan Masakan' : 'Edit Bahan Masakan',
+            style: const TextStyle(fontSize: 16)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: nameCtrl,
-              decoration: const InputDecoration(labelText: 'Nama Bahan (mis. Rumput Laut)'),
+              decoration: const InputDecoration(
+                  labelText: 'Nama Bahan (mis. Rumput Laut)'),
             ),
             const SizedBox(height: 10),
             TextField(
               controller: amountCtrl,
-              decoration: const InputDecoration(labelText: 'Takaran (mis. 2 lembar)'),
+              decoration:
+                  const InputDecoration(labelText: 'Takaran (mis. 2 lembar)'),
             ),
           ],
         ),
@@ -176,39 +234,48 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
             onPressed: () {
               if (nameCtrl.text.trim().isNotEmpty) {
                 setState(() {
-                  _ingredients.add(
-                    Ingredient(
-                      id: DateTime.now().millisecondsSinceEpoch.toString(),
-                      name: nameCtrl.text.trim(),
-                      amount: amountCtrl.text.trim().isEmpty ? 'Secukupnya' : amountCtrl.text.trim(),
-                    ),
+                  final updated = Ingredient(
+                    id: ingredient?.id ??
+                        DateTime.now().millisecondsSinceEpoch.toString(),
+                    name: nameCtrl.text.trim(),
+                    amount: amountCtrl.text.trim().isEmpty
+                        ? 'Secukupnya'
+                        : amountCtrl.text.trim(),
                   );
+                  if (ingredient == null) {
+                    _ingredients.add(updated);
+                  } else {
+                    _ingredients[_ingredients.indexOf(ingredient)] = updated;
+                  }
                 });
                 Navigator.pop(context);
-                widget.onShowToast?.call('Bahan masakan ditambahkan');
+                widget.onShowToast?.call('Bahan masakan disimpan');
               }
             },
-            child: const Text('Tambah'),
+            child: Text(ingredient == null ? 'Tambah' : 'Simpan'),
           ),
         ],
       ),
     );
   }
 
-  void _addStepDialog() {
-    final titleCtrl = TextEditingController();
-    final descCtrl = TextEditingController();
+  void _addStepDialog([CookingStep? step]) {
+    final titleCtrl = TextEditingController(text: step?.title);
+    final descCtrl = TextEditingController(text: step?.description);
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Tambah Langkah Memasak', style: TextStyle(fontSize: 16)),
+        title: Text(
+            step == null ? 'Tambah Langkah Memasak' : 'Edit Langkah Memasak',
+            style: const TextStyle(fontSize: 16)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: titleCtrl,
-              decoration: const InputDecoration(labelText: 'Judul Langkah (mis. Penyajian)'),
+              decoration: const InputDecoration(
+                  labelText: 'Judul Langkah (mis. Penyajian)'),
             ),
             const SizedBox(height: 10),
             TextField(
@@ -225,25 +292,30 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
           ),
           ElevatedButton(
             onPressed: () {
-              if (descCtrl.text.trim().isNotEmpty || titleCtrl.text.trim().isNotEmpty) {
+              if (descCtrl.text.trim().isNotEmpty ||
+                  titleCtrl.text.trim().isNotEmpty) {
                 setState(() {
-                  _steps.add(
-                    CookingStep(
-                      id: DateTime.now().millisecondsSinceEpoch.toString(),
-                      title: titleCtrl.text.trim().isEmpty
-                          ? 'Tahap Memasak ${_steps.length + 1}'
-                          : titleCtrl.text.trim(),
-                      description: descCtrl.text.trim().isEmpty
-                          ? 'Lanjutkan proses memasak.'
-                          : descCtrl.text.trim(),
-                    ),
+                  final updated = CookingStep(
+                    id: step?.id ??
+                        DateTime.now().millisecondsSinceEpoch.toString(),
+                    title: titleCtrl.text.trim().isEmpty
+                        ? 'Tahap Memasak ${_steps.length + 1}'
+                        : titleCtrl.text.trim(),
+                    description: descCtrl.text.trim().isEmpty
+                        ? 'Lanjutkan proses memasak.'
+                        : descCtrl.text.trim(),
                   );
+                  if (step == null) {
+                    _steps.add(updated);
+                  } else {
+                    _steps[_steps.indexOf(step)] = updated;
+                  }
                 });
                 Navigator.pop(context);
-                widget.onShowToast?.call('Langkah baru ditambahkan');
+                widget.onShowToast?.call('Langkah memasak disimpan');
               }
             },
-            child: const Text('Tambah'),
+            child: Text(step == null ? 'Tambah' : 'Simpan'),
           ),
         ],
       ),
@@ -256,7 +328,8 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
       return;
     }
     if (widget.userId == null) {
-      widget.onShowToast?.call('Masuk akun terlebih dahulu untuk menerbitkan resep.');
+      widget.onShowToast
+          ?.call('Masuk akun terlebih dahulu untuk menerbitkan resep.');
       return;
     }
     if (!RecipeService.isReady) {
@@ -267,23 +340,32 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
 
     setState(() => _isPublishing = true);
 
-    // 1) Unggah foto lokal ke Firebase Storage.
-    final heroUrl = await _resolvePhoto(_heroPhoto, 'recipes/hero');
-    if (heroUrl == null) {
+    // 1) Unggah foto lokal ke Supabase Storage; URL lama tetap dipakai.
+    late final String heroUrl;
+    final galleryUrls = <String>[];
+    try {
+      heroUrl = await _resolvePhoto(_heroPhoto);
+      if (!mounted) return;
+      // Simpan URL hasil upload agar percobaan ulang tidak mengunggah file yang sama.
+      _heroPhoto = heroUrl;
+      for (var i = 0; i < _subPhotos.length; i++) {
+        final url = await _resolvePhoto(_subPhotos[i]);
+        if (!mounted) return;
+        _subPhotos[i] = url;
+        galleryUrls.add(url);
+      }
+    } on ImageUploadException catch (e) {
       if (!mounted) return;
       setState(() => _isPublishing = false);
-      widget.onShowToast?.call('Gagal mengunggah foto utama. Periksa koneksi internet Anda.');
+      widget.onShowToast?.call(
+        '${e.message} Resep belum disimpan. File yang sudah terunggah tetap di Supabase dan tidak dihapus.',
+      );
       return;
     }
 
-    final galleryUrls = <String>[];
-    for (final photo in _subPhotos) {
-      final url = await _resolvePhoto(photo, 'recipes/gallery');
-      if (url != null) galleryUrls.add(url);
-    }
-
     // 2) Simpan dokumen resep ke Firestore.
-    final res = await RecipeService.createRecipe(
+    final res = await RecipeService.saveRecipe(
+      recipeId: widget.recipe?.id,
       authorId: widget.userId!,
       authorName: widget.userName,
       authorAvatar: widget.userAvatar,
@@ -309,7 +391,9 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
     if (res.ok) {
       widget.onPublishRecipe();
       widget.onShowToast?.call(
-        'Resep "${_titleController.text.trim()}" berhasil dipublikasikan ke database! (Kode: ${res.code ?? ''})',
+        widget.recipe == null
+            ? 'Resep "${_titleController.text.trim()}" berhasil dipublikasikan ke database! (Kode: ${res.code ?? ''})'
+            : 'Perubahan resep berhasil disimpan ke database.',
       );
       // Bersihkan form
       _titleController.clear();
@@ -320,7 +404,8 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
       });
     } else {
       widget.onShowToast?.call(
-        res.message.isEmpty ? 'Gagal menerbitkan resep. Coba lagi.' : res.message,
+        'Resep gagal disimpan ke Firestore. ${res.message} '
+        'File yang sudah terunggah tetap di Supabase dan tidak dihapus. Silakan coba simpan lagi.',
       );
     }
   }
@@ -337,7 +422,7 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
+    final form = ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       children: [
         // Intro Banner
@@ -348,14 +433,16 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: AppColors.primaryFixed,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Row(
                     children: [
-                      Icon(Icons.local_fire_department, color: AppColors.primary, size: 14),
+                      Icon(Icons.local_fire_department,
+                          color: AppColors.primary, size: 14),
                       SizedBox(width: 4),
                       Text(
                         'KREASI DAPUR',
@@ -370,7 +457,8 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
                   ),
                 ),
                 const SizedBox(height: 6),
-                Text('Upload Resep', style: Theme.of(context).textTheme.headlineLarge),
+                Text(widget.recipe == null ? 'Upload Resep' : 'Edit Resep',
+                    style: Theme.of(context).textTheme.headlineLarge),
               ],
             ),
             Container(
@@ -380,14 +468,18 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
                 color: AppColors.surfaceContainerHigh,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.restaurant, color: AppColors.onSurfaceVariant, size: 22),
+              child: const Icon(Icons.restaurant,
+                  color: AppColors.onSurfaceVariant, size: 22),
             ),
           ],
         ),
         const SizedBox(height: 6),
-        const Text(
-          'Bagikan kelezatan dan rahasia racikan bumbu spesialmu ke komunitas kuliner.',
-          style: TextStyle(color: AppColors.onSurfaceVariant, fontSize: 13),
+        Text(
+          widget.recipe == null
+              ? 'Bagikan kelezatan dan rahasia racikan bumbu spesialmu ke komunitas kuliner.'
+              : 'Perbarui resep Anda, lalu simpan perubahan.',
+          style:
+              const TextStyle(color: AppColors.onSurfaceVariant, fontSize: 13),
         ),
         const SizedBox(height: 20),
 
@@ -412,7 +504,8 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
                 children: [
                   const Row(
                     children: [
-                      Icon(Icons.add_a_photo, color: AppColors.primary, size: 16),
+                      Icon(Icons.add_a_photo,
+                          color: AppColors.primary, size: 16),
                       SizedBox(width: 6),
                       Text(
                         'FOTO UTAMA RESEP',
@@ -426,7 +519,8 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
                     ],
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
                       color: Colors.white12,
                       borderRadius: BorderRadius.circular(10),
@@ -473,13 +567,15 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
                           color: Colors.black.withValues(alpha: 0.7),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.favorite, color: AppColors.primary, size: 16),
+                        child: const Icon(Icons.favorite,
+                            color: AppColors.primary, size: 16),
                       ),
                     ),
                     Positioned(
                       bottom: -8,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
                           color: AppColors.primary,
                           borderRadius: BorderRadius.circular(14),
@@ -516,7 +612,9 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
                         final prev = _heroPhoto;
                         setState(() {
                           _heroPhoto = photo;
-                          _subPhotos = _subPhotos.map((p) => p == photo ? prev : p).toList();
+                          _subPhotos = _subPhotos
+                              .map((p) => p == photo ? prev : p)
+                              .toList();
                         });
                       },
                       child: Container(
@@ -544,7 +642,8 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
                         color: Colors.white12,
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.add, color: Colors.white, size: 20),
+                      child:
+                          const Icon(Icons.add, color: Colors.white, size: 20),
                     ),
                   ),
                 ],
@@ -577,9 +676,11 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.edit_note, color: AppColors.primary, size: 22),
+                  const Icon(Icons.edit_note,
+                      color: AppColors.primary, size: 22),
                   const SizedBox(width: 8),
-                  Text('Detail Resep', style: Theme.of(context).textTheme.headlineSmall),
+                  Text('Detail Resep',
+                      style: Theme.of(context).textTheme.headlineSmall),
                 ],
               ),
               const SizedBox(height: 16),
@@ -588,10 +689,13 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Nama Resep *', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                  const Text('Nama Resep *',
+                      style:
+                          TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                   Text(
                     '${_titleController.text.length}/60',
-                    style: const TextStyle(color: AppColors.outline, fontSize: 11),
+                    style:
+                        const TextStyle(color: AppColors.outline, fontSize: 11),
                   ),
                 ],
               ),
@@ -599,26 +703,34 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
               TextField(
                 controller: _titleController,
                 maxLength: 60,
-                buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
+                buildCounter: (context,
+                        {required currentLength,
+                        required isFocused,
+                        maxLength}) =>
+                    null,
                 onChanged: (val) => setState(() {}),
-                decoration: const InputDecoration(hintText: 'Misal: Nasi Lemak Sambal Sotong'),
+                decoration: const InputDecoration(
+                    hintText: 'Misal: Nasi Lemak Sambal Sotong'),
               ),
               const SizedBox(height: 14),
 
               // Description Field
-              const Text('Deskripsi Singkat', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              const Text('Deskripsi Singkat',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
               const SizedBox(height: 6),
               TextField(
                 controller: _descController,
                 maxLines: 3,
                 decoration: const InputDecoration(
-                  hintText: 'Ceritakan keistimewaan rasa atau momen yang pas untuk resep ini...',
+                  hintText:
+                      'Ceritakan keistimewaan rasa atau momen yang pas untuk resep ini...',
                 ),
               ),
               const SizedBox(height: 16),
 
               // Category Pills
-              const Text('Kategori Masakan', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              const Text('Kategori Masakan',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
               const SizedBox(height: 8),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -636,7 +748,9 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
                         selectedColor: AppColors.inverseSurface,
                         backgroundColor: AppColors.surfaceContainerHigh,
                         labelStyle: TextStyle(
-                          color: active ? Colors.white : AppColors.onSurfaceVariant,
+                          color: active
+                              ? Colors.white
+                              : AppColors.onSurfaceVariant,
                           fontWeight: FontWeight.w600,
                           fontSize: 12,
                         ),
@@ -655,12 +769,14 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
               // Triple Metrics
               Row(
                 children: [
-                  _buildMetricInput('Waktu', Icons.timer, AppColors.primary, _timeController),
-                  const SizedBox(width: 8),
-                  _buildMetricInput('Porsi', Icons.group, AppColors.tertiary, _servingsController),
-                  const SizedBox(width: 8),
                   _buildMetricInput(
-                      'Tingkat', Icons.equalizer, AppColors.primaryContainer, _difficultyController),
+                      'Waktu', Icons.timer, AppColors.primary, _timeController),
+                  const SizedBox(width: 8),
+                  _buildMetricInput('Porsi', Icons.group, AppColors.tertiary,
+                      _servingsController),
+                  const SizedBox(width: 8),
+                  _buildMetricInput('Tingkat', Icons.equalizer,
+                      AppColors.primaryContainer, _difficultyController),
                 ],
               ),
             ],
@@ -675,7 +791,8 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
             color: AppColors.surfaceContainerLowest,
             borderRadius: BorderRadius.circular(28),
             boxShadow: [
-              BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10),
+              BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03), blurRadius: 10),
             ],
           ),
           child: Column(
@@ -686,13 +803,16 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.kitchen, color: AppColors.primary, size: 20),
+                      const Icon(Icons.kitchen,
+                          color: AppColors.primary, size: 20),
                       const SizedBox(width: 8),
-                      Text('Bahan-Bahan', style: Theme.of(context).textTheme.headlineSmall),
+                      Text('Bahan-Bahan',
+                          style: Theme.of(context).textTheme.headlineSmall),
                     ],
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       color: AppColors.primaryFixed,
                       borderRadius: BorderRadius.circular(12),
@@ -709,18 +829,19 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
                 ],
               ),
               const SizedBox(height: 14),
-
               ..._ingredients.map((ing) {
                 return Container(
                   margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
                     color: AppColors.surfaceContainerLow,
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.drag_indicator, color: AppColors.outline, size: 18),
+                      const Icon(Icons.drag_indicator,
+                          color: AppColors.outline, size: 18),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Column(
@@ -728,38 +849,48 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
                           children: [
                             Text(
                               ing.name,
-                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w600, fontSize: 13),
                             ),
                             Text(
                               ing.amount,
-                              style: const TextStyle(color: AppColors.primary, fontSize: 11),
+                              style: const TextStyle(
+                                  color: AppColors.primary, fontSize: 11),
                             ),
                           ],
                         ),
                       ),
                       IconButton(
+                        onPressed: () => _addIngredientDialog(ing),
+                        tooltip: 'Edit bahan',
+                        icon: const Icon(Icons.edit_outlined, size: 18),
+                      ),
+                      IconButton(
                         onPressed: () {
                           setState(() => _ingredients.remove(ing));
                         },
-                        icon: const Icon(Icons.close, color: AppColors.outline, size: 18),
+                        icon: const Icon(Icons.close,
+                            color: AppColors.outline, size: 18),
                       ),
                     ],
                   ),
                 );
               }),
               const SizedBox(height: 8),
-
               OutlinedButton.icon(
-                onPressed: _addIngredientDialog,
-                icon: const Icon(Icons.add_circle, color: AppColors.primary, size: 18),
+                onPressed: () => _addIngredientDialog(),
+                icon: const Icon(Icons.add_circle,
+                    color: AppColors.primary, size: 18),
                 label: const Text(
                   'Tambah Bahan Masakan',
-                  style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                      color: AppColors.primary, fontWeight: FontWeight.bold),
                 ),
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size(double.infinity, 46),
                   side: const BorderSide(color: AppColors.primaryFixed),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
                 ),
               ),
             ],
@@ -774,7 +905,8 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
             color: AppColors.surfaceContainerLowest,
             borderRadius: BorderRadius.circular(28),
             boxShadow: [
-              BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10),
+              BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03), blurRadius: 10),
             ],
           ),
           child: Column(
@@ -785,19 +917,21 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.format_list_numbered, color: AppColors.primary, size: 20),
+                      const Icon(Icons.format_list_numbered,
+                          color: AppColors.primary, size: 20),
                       const SizedBox(width: 8),
-                      Text('Langkah Memasak', style: Theme.of(context).textTheme.headlineSmall),
+                      Text('Langkah Memasak',
+                          style: Theme.of(context).textTheme.headlineSmall),
                     ],
                   ),
                   Text(
                     '${_steps.length} Tahapan',
-                    style: const TextStyle(color: AppColors.secondary, fontSize: 12),
+                    style: const TextStyle(
+                        color: AppColors.secondary, fontSize: 12),
                   ),
                 ],
               ),
               const SizedBox(height: 14),
-
               ..._steps.asMap().entries.map((entry) {
                 final idx = entry.key;
                 final step = entry.value;
@@ -834,14 +968,33 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                step.title,
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                              Row(
+                                children: [
+                                  Expanded(
+                                      child: Text(step.title,
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 13))),
+                                  IconButton(
+                                    onPressed: () => _addStepDialog(step),
+                                    tooltip: 'Edit langkah',
+                                    icon: const Icon(Icons.edit_outlined,
+                                        size: 18),
+                                  ),
+                                  IconButton(
+                                    onPressed: () =>
+                                        setState(() => _steps.remove(step)),
+                                    tooltip: 'Hapus langkah',
+                                    icon: const Icon(Icons.close, size: 18),
+                                  ),
+                                ],
                               ),
                               const SizedBox(height: 4),
                               Text(
                                 step.description,
-                                style: const TextStyle(color: AppColors.onSurfaceVariant, fontSize: 12),
+                                style: const TextStyle(
+                                    color: AppColors.onSurfaceVariant,
+                                    fontSize: 12),
                               ),
                             ],
                           ),
@@ -852,18 +1005,22 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
                 );
               }),
               const SizedBox(height: 8),
-
               OutlinedButton.icon(
-                onPressed: _addStepDialog,
-                icon: const Icon(Icons.add_task, color: AppColors.onSurfaceVariant, size: 18),
+                onPressed: () => _addStepDialog(),
+                icon: const Icon(Icons.add_task,
+                    color: AppColors.onSurfaceVariant, size: 18),
                 label: const Text(
                   'Tambah Langkah Baru',
-                  style: TextStyle(color: AppColors.onSurfaceVariant, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                      color: AppColors.onSurfaceVariant,
+                      fontWeight: FontWeight.bold),
                 ),
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size(double.infinity, 46),
-                  side: const BorderSide(color: AppColors.surfaceContainerHighest),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  side: const BorderSide(
+                      color: AppColors.surfaceContainerHighest),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
                 ),
               ),
             ],
@@ -878,30 +1035,36 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
             backgroundColor: AppColors.primary,
             foregroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
             elevation: 4,
           ),
           child: _isPublishing
               ? const SizedBox(
                   width: 22,
                   height: 22,
-                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                  child: CircularProgressIndicator(
+                      color: Colors.white, strokeWidth: 2.5),
                 )
-              : const Row(
+              : Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      'Terbitkan Resep Sekarang',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      widget.recipe == null
+                          ? 'Terbitkan Resep Sekarang'
+                          : 'Simpan Perubahan',
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.bold),
                     ),
-                    SizedBox(width: 8),
-                    Icon(Icons.arrow_forward, size: 18),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.arrow_forward, size: 18),
                   ],
                 ),
         ),
         const SizedBox(height: 20),
       ],
     );
+    return AbsorbPointer(absorbing: _isPublishing, child: form);
   }
 
   Widget _buildMetricInput(
@@ -917,7 +1080,9 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
           children: [
             Icon(icon, color: color, size: 20),
             const SizedBox(height: 4),
-            Text(label, style: const TextStyle(color: AppColors.secondary, fontSize: 11)),
+            Text(label,
+                style:
+                    const TextStyle(color: AppColors.secondary, fontSize: 11)),
             TextField(
               controller: ctrl,
               textAlign: TextAlign.center,
