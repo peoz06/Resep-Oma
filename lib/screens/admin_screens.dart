@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/recipe_model.dart';
+import '../models/user_model.dart';
 import '../services/recipe_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_cached_image.dart';
@@ -8,6 +9,7 @@ class AdminRecipesScreen extends StatefulWidget {
   final List<Recipe> recipes;
   final ValueChanged<Recipe> onSelectRecipe;
   final VoidCallback onNavigateToUpload;
+  final Future<void> Function(String) onDeleteRecipe;
   final ValueChanged<String>? onShowToast;
 
   const AdminRecipesScreen({
@@ -15,6 +17,7 @@ class AdminRecipesScreen extends StatefulWidget {
     required this.recipes,
     required this.onSelectRecipe,
     required this.onNavigateToUpload,
+    required this.onDeleteRecipe,
     this.onShowToast,
   });
 
@@ -26,9 +29,11 @@ class _AdminRecipesScreenState extends State<AdminRecipesScreen> {
   final TextEditingController _searchCtrl = TextEditingController();
   String _activeFilter = 'all';
 
-  List<Map<String, dynamic>> _adminList = [];
+  List<Map<String, dynamic>> get _adminList =>
+      widget.recipes.map(_mapRecipe).toList();
   Map<String, int> _reportCounts = {}; // recipe_id -> jumlah laporan open
   bool _loading = true;
+  String? _loadError;
 
   @override
   void initState() {
@@ -40,7 +45,17 @@ class _AdminRecipesScreenState extends State<AdminRecipesScreen> {
     setState(() => _loading = true);
 
     // Muat laporan dari Firestore
-    final reports = await RecipeService.fetchReports();
+    late final List<Map<String, dynamic>> reports;
+    try {
+      reports = await RecipeService.fetchReports();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = RecipeService.errorMessage(e);
+        _loading = false;
+      });
+      return;
+    }
     final Map<String, int> counts = {};
     for (final r in reports) {
       if (r['status'] == 'open') {
@@ -54,14 +69,15 @@ class _AdminRecipesScreenState extends State<AdminRecipesScreen> {
     if (!mounted) return;
     setState(() {
       _reportCounts = counts;
-      _adminList = widget.recipes.map(_mapRecipe).toList();
+      _loadError = null;
       _loading = false;
     });
   }
 
   Map<String, dynamic> _mapRecipe(Recipe recipe) {
     final likes = recipe.likesCount;
-    final likesStr = likes >= 1000 ? '${(likes / 1000).toStringAsFixed(1)}k' : '$likes';
+    final likesStr =
+        likes >= 1000 ? '${(likes / 1000).toStringAsFixed(1)}k' : '$likes';
     return {
       'id': recipe.id,
       'title': recipe.title,
@@ -76,19 +92,8 @@ class _AdminRecipesScreenState extends State<AdminRecipesScreen> {
   }
 
   Future<void> _deleteRecipeAdmin(Map<String, dynamic> item) async {
-    final res = await RecipeService.deleteRecipe(item['id'] as String);
-    if (!mounted) return;
-    widget.onShowToast?.call(
-      res.message.isEmpty ? 'Gagal menghapus resep.' : res.message,
-    );
-    if (res.ok) {
-      // Muat ulang dari database
-      final recipes = await RecipeService.fetchRecipes();
-      if (!mounted) return;
-      setState(() {
-        _adminList = recipes.map(_mapRecipe).toList();
-      });
-    }
+    await widget.onDeleteRecipe(item['id'] as String);
+    if (mounted) await _loadData();
   }
 
   void _showReportsDialog() {
@@ -109,7 +114,8 @@ class _AdminRecipesScreenState extends State<AdminRecipesScreen> {
                 ),
                 child: const Row(
                   children: [
-                    Icon(Icons.flag, color: AppColors.onErrorContainer, size: 20),
+                    Icon(Icons.flag,
+                        color: AppColors.onErrorContainer, size: 20),
                     SizedBox(width: 8),
                     Text(
                       'Laporan Resep Komunitas',
@@ -129,6 +135,12 @@ class _AdminRecipesScreenState extends State<AdminRecipesScreen> {
                       return const Padding(
                         padding: EdgeInsets.all(32),
                         child: CircularProgressIndicator(),
+                      );
+                    }
+                    if (snap.hasError) {
+                      return Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(RecipeService.errorMessage(snap.error!)),
                       );
                     }
                     final reports = snap.data ?? const [];
@@ -151,7 +163,9 @@ class _AdminRecipesScreenState extends State<AdminRecipesScreen> {
                           dense: true,
                           leading: Icon(
                             isOpen ? Icons.flag : Icons.check_circle_outline,
-                            color: isOpen ? AppColors.error : const Color(0xFF10B981),
+                            color: isOpen
+                                ? AppColors.error
+                                : const Color(0xFF10B981),
                             size: 20,
                           ),
                           title: Text(
@@ -167,8 +181,9 @@ class _AdminRecipesScreenState extends State<AdminRecipesScreen> {
                           trailing: isOpen
                               ? TextButton(
                                   onPressed: () async {
-                                    final res = await RecipeService.resolveReport(
-                                        rep['id'] as String);
+                                    final res =
+                                        await RecipeService.resolveReport(
+                                            rep['id'] as String);
                                     if (context.mounted) {
                                       Navigator.pop(context);
                                       widget.onShowToast?.call(
@@ -176,6 +191,7 @@ class _AdminRecipesScreenState extends State<AdminRecipesScreen> {
                                             ? 'Laporan ditandai selesai.'
                                             : res.message,
                                       );
+                                      if (res.ok && mounted) _loadData();
                                     }
                                   },
                                   child: const Text('Selesai'),
@@ -210,8 +226,12 @@ class _AdminRecipesScreenState extends State<AdminRecipesScreen> {
           (item['author'] as String).toLowerCase().contains(query) ||
           (item['code'] as String).toLowerCase().contains(query);
 
-      if (_activeFilter == 'popular') return matchSearch && (item['popular'] as bool);
-      if (_activeFilter == 'reported') return matchSearch && ((item['reported'] as int) > 0);
+      if (_activeFilter == 'popular') {
+        return matchSearch && (item['popular'] as bool);
+      }
+      if (_activeFilter == 'reported') {
+        return matchSearch && ((item['reported'] as int) > 0);
+      }
       return matchSearch;
     }).toList();
 
@@ -234,6 +254,8 @@ class _AdminRecipesScreenState extends State<AdminRecipesScreen> {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       children: [
+        if (_loadError != null)
+          Text(_loadError!, style: const TextStyle(color: AppColors.error)),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -250,23 +272,26 @@ class _AdminRecipesScreenState extends State<AdminRecipesScreen> {
                   ),
                 ),
                 SizedBox(height: 2),
-                Text('Kelola Resep', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                Text('Kelola Resep',
+                    style:
+                        TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
               ],
             ),
             ElevatedButton.icon(
               onPressed: widget.onNavigateToUpload,
               icon: const Icon(Icons.add, size: 16),
-              label: const Text('Buat Resep', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              label: const Text('Buat Resep',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20)),
               ),
             ),
           ],
         ),
         const SizedBox(height: 12),
-
         Row(
           children: [
             Expanded(
@@ -278,11 +303,15 @@ class _AdminRecipesScreenState extends State<AdminRecipesScreen> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.dinner_dining, color: AppColors.primary, size: 20),
+                    const Icon(Icons.dinner_dining,
+                        color: AppColors.primary, size: 20),
                     const SizedBox(width: 8),
-                    const Text('Total Resep: ', style: TextStyle(fontSize: 12, color: AppColors.secondary)),
+                    const Text('Total Resep: ',
+                        style: TextStyle(
+                            fontSize: 12, color: AppColors.secondary)),
                     Text('${_adminList.length}',
-                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                        style: const TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.bold)),
                   ],
                 ),
               ),
@@ -293,18 +322,23 @@ class _AdminRecipesScreenState extends State<AdminRecipesScreen> {
               icon: const Icon(Icons.flag, size: 16),
               label: Text(
                 totalReports > 0 ? 'Laporan ($totalReports)' : 'Laporan',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                style:
+                    const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
               ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: totalReports > 0 ? AppColors.error : AppColors.surfaceContainerHigh,
-                foregroundColor: totalReports > 0 ? Colors.white : AppColors.onSurfaceVariant,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                backgroundColor: totalReports > 0
+                    ? AppColors.error
+                    : AppColors.surfaceContainerHigh,
+                foregroundColor: totalReports > 0
+                    ? Colors.white
+                    : AppColors.onSurfaceVariant,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20)),
               ),
             ),
           ],
         ),
         const SizedBox(height: 14),
-
         TextField(
           controller: _searchCtrl,
           onChanged: (val) => setState(() {}),
@@ -324,7 +358,6 @@ class _AdminRecipesScreenState extends State<AdminRecipesScreen> {
           ),
         ),
         const SizedBox(height: 10),
-
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
@@ -333,12 +366,12 @@ class _AdminRecipesScreenState extends State<AdminRecipesScreen> {
               const SizedBox(width: 8),
               _buildChip('popular', 'Populer ⭐'),
               const SizedBox(width: 8),
-              _buildChip('reported', 'Dilaporkan ($totalReports)', isDestructive: true),
+              _buildChip('reported', 'Dilaporkan ($totalReports)',
+                  isDestructive: true),
             ],
           ),
         ),
         const SizedBox(height: 16),
-
         if (filtered.isEmpty)
           Container(
             padding: const EdgeInsets.all(24),
@@ -355,103 +388,120 @@ class _AdminRecipesScreenState extends State<AdminRecipesScreen> {
           )
         else
           Container(
-          decoration: BoxDecoration(
-            color: AppColors.surfaceContainerLowest,
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10)],
-          ),
-          child: Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: const BoxDecoration(
-                  color: AppColors.surfaceContainerLow,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('RESEP & PENULIS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                    Text('TINDAKAN', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                  ],
-                ),
-              ),
-              ...filtered.map((item) {
-                return Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
+            decoration: BoxDecoration(
+              color: AppColors.surfaceContainerLowest,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.03), blurRadius: 10)
+              ],
+            ),
+            child: Column(
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  decoration: const BoxDecoration(
+                    color: AppColors.surfaceContainerLow,
+                    borderRadius:
+                        BorderRadius.vertical(top: Radius.circular(24)),
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      AppCachedImage(
-                        imageUrl: item['image'] as String,
-                        width: 48,
-                        height: 48,
-                        isCircle: true,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    item['title'] as String,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                                  ),
-                                ),
-                                if ((item['reported'] as int) > 0)
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.errorContainer,
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: const Text(
-                                      'Tinjau',
-                                      style: TextStyle(
-                                        color: AppColors.onErrorContainer,
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            Text(
-                              'oleh ${item['author']} • ${item['code']}',
-                              style: const TextStyle(color: AppColors.onSurfaceVariant, fontSize: 11),
-                            ),
-                            Text(
-                              '${item['likes']} Suka • ${item['timeAgo']}',
-                              style: const TextStyle(color: AppColors.secondary, fontSize: 10),
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () {
-                          final match = widget.recipes.firstWhere(
-                            (r) => r.id == item['id'],
-                            orElse: () => widget.recipes.first,
-                          );
-                          widget.onSelectRecipe(match);
-                        },
-                        icon: const Icon(Icons.visibility_outlined, size: 20, color: AppColors.onSurfaceVariant),
-                      ),
-                      IconButton(
-                        onPressed: () => _deleteRecipeAdmin(item),
-                        icon: const Icon(Icons.delete_outline, size: 20, color: AppColors.primary),
-                      ),
+                      Text('RESEP & PENULIS',
+                          style: TextStyle(
+                              fontSize: 10, fontWeight: FontWeight.bold)),
+                      Text('TINDAKAN',
+                          style: TextStyle(
+                              fontSize: 10, fontWeight: FontWeight.bold)),
                     ],
                   ),
-                );
-              }),
-            ],
+                ),
+                ...filtered.map((item) {
+                  return Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        AppCachedImage(
+                          imageUrl: item['image'] as String,
+                          width: 48,
+                          height: 48,
+                          isCircle: true,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      item['title'] as String,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13),
+                                    ),
+                                  ),
+                                  if ((item['reported'] as int) > 0)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.errorContainer,
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: const Text(
+                                        'Tinjau',
+                                        style: TextStyle(
+                                          color: AppColors.onErrorContainer,
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              Text(
+                                'oleh ${item['author']} • ${item['code']}',
+                                style: const TextStyle(
+                                    color: AppColors.onSurfaceVariant,
+                                    fontSize: 11),
+                              ),
+                              Text(
+                                '${item['likes']} Suka • ${item['timeAgo']}',
+                                style: const TextStyle(
+                                    color: AppColors.secondary, fontSize: 10),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () {
+                            final match = widget.recipes.firstWhere(
+                              (r) => r.id == item['id'],
+                              orElse: () => widget.recipes.first,
+                            );
+                            widget.onSelectRecipe(match);
+                          },
+                          icon: const Icon(Icons.visibility_outlined,
+                              size: 20, color: AppColors.onSurfaceVariant),
+                        ),
+                        IconButton(
+                          onPressed: () => _deleteRecipeAdmin(item),
+                          icon: const Icon(Icons.delete_outline,
+                              size: 20, color: AppColors.primary),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+              ],
+            ),
           ),
-        ),
         const SizedBox(height: 20),
       ],
     );
@@ -468,11 +518,14 @@ class _AdminRecipesScreenState extends State<AdminRecipesScreen> {
       selectedColor: isDestructive ? AppColors.error : AppColors.inverseSurface,
       backgroundColor: AppColors.surfaceContainerLowest,
       labelStyle: TextStyle(
-        color: active ? Colors.white : (isDestructive ? AppColors.error : AppColors.onSurfaceVariant),
+        color: active
+            ? Colors.white
+            : (isDestructive ? AppColors.error : AppColors.onSurfaceVariant),
         fontWeight: FontWeight.bold,
         fontSize: 11,
       ),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide.none),
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16), side: BorderSide.none),
       showCheckmark: false,
     );
   }
@@ -492,6 +545,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   final String _activeFilter = 'Semua';
   List<AdminUser> _users = [];
   bool _loading = true;
+  String? _loadError;
 
   @override
   void initState() {
@@ -510,11 +564,22 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
       return;
     }
 
-    final users = await RecipeService.fetchUsers();
+    late final List<AppUser> users;
+    try {
+      users = await RecipeService.fetchUsers();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = RecipeService.errorMessage(e);
+        _loading = false;
+      });
+      return;
+    }
     if (!mounted) return;
 
     setState(() {
       _users = users.map(AdminUser.fromAppUser).toList();
+      _loadError = null;
       _loading = false;
     });
   }
@@ -532,25 +597,33 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Tambah Pengguna Baru', style: TextStyle(fontSize: 16)),
+        title:
+            const Text('Tambah Pengguna Baru', style: TextStyle(fontSize: 16)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Nama Lengkap')),
+            TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(labelText: 'Nama Lengkap')),
             const SizedBox(height: 10),
-            TextField(controller: emailCtrl, decoration: const InputDecoration(labelText: 'Email')),
+            TextField(
+                controller: emailCtrl,
+                decoration: const InputDecoration(labelText: 'Email')),
             const SizedBox(height: 12),
             const Text(
-              'Profil dibuat lebih dulu. Akun login aktif setelah yang bersangkutan mendaftar dengan email ini.',
+              'Ini hanya catatan profil pending, bukan akun login. Pengguna tetap harus registrasi; admin memoderasi akun UID hasil registrasi.',
               style: TextStyle(fontSize: 11, color: AppColors.secondary),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Batal')),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Batal')),
           ElevatedButton(
             onPressed: () async {
-              if (nameCtrl.text.trim().isEmpty || emailCtrl.text.trim().isEmpty) {
+              if (nameCtrl.text.trim().isEmpty ||
+                  emailCtrl.text.trim().isEmpty) {
                 widget.onShowToast?.call('Mohon isi nama dan email pengguna.');
                 return;
               }
@@ -561,7 +634,9 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
               if (!mounted) return;
               if (context.mounted) Navigator.pop(context);
               widget.onShowToast?.call(
-                res.message.isEmpty ? 'Gagal menambahkan pengguna.' : res.message,
+                res.message.isEmpty
+                    ? 'Gagal menambahkan pengguna.'
+                    : res.message,
               );
               if (res.ok) {
                 _loadUsers(); // muat ulang dari database
@@ -572,6 +647,31 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _banUser(AdminUser user) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Blokir ${user.name}?'),
+        content: const Text(
+            'Pengguna tidak bisa masuk atau mengunggah resep. Dokumen profil tetap disimpan.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Batal')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Blokir')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final res = await RecipeService.banUser(user.id);
+    if (!mounted) return;
+    if (res.ok) setState(() => user.status = 'Diblokir');
+    widget.onShowToast?.call(
+        res.ok ? 'Pengguna diblokir. Profil tetap disimpan.' : res.message);
   }
 
   @override
@@ -585,22 +685,29 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
           u.code.toLowerCase().contains(query);
 
       if (_activeFilter == 'Aktif') return matchesQuery && u.status == 'Aktif';
-      if (_activeFilter == 'Kreator') return matchesQuery && u.role == 'Kreator';
+      if (_activeFilter == 'Kreator') {
+        return matchesQuery && u.role == 'Kreator';
+      }
       if (_activeFilter == 'Baru') return matchesQuery && u.status == 'Baru';
-      if (_activeFilter == 'Ditangguhkan') return matchesQuery && u.status == 'Ditangguhkan';
+      if (_activeFilter == 'Ditangguhkan') {
+        return matchesQuery && u.status == 'Ditangguhkan';
+      }
       return matchesQuery;
     }).toList();
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       children: [
+        if (_loadError != null)
+          Text(_loadError!, style: const TextStyle(color: AppColors.error)),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Daftar Akun Terdaftar', style: Theme.of(context).textTheme.headlineMedium),
+                Text('Daftar Akun Terdaftar',
+                    style: Theme.of(context).textTheme.headlineMedium),
                 const Text(
                   'Kelola hak akses dan status akun',
                   style: TextStyle(color: AppColors.secondary, fontSize: 12),
@@ -610,7 +717,8 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
             IconButton(
               onPressed: _addUserDialog,
               icon: const Icon(Icons.person_add, color: AppColors.primary),
-              style: IconButton.styleFrom(backgroundColor: AppColors.primaryFixed),
+              style:
+                  IconButton.styleFrom(backgroundColor: AppColors.primaryFixed),
             ),
           ],
         ),
@@ -622,18 +730,37 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
             final total = _users.length;
             final aktif = _users.where((u) => u.status == 'Aktif').length;
             final baru = _users.where((u) => u.status == 'Baru').length;
-            final ditangguhkan = _users.where((u) => u.status == 'Ditangguhkan').length;
+            final ditangguhkan =
+                _users.where((u) => u.status == 'Ditangguhkan').length;
+            final diblokir = _users.where((u) => u.status == 'Diblokir').length;
             return SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
-                  _MetricBadge(label: 'Total', value: '$total', color: AppColors.onSurface),
+                  _MetricBadge(
+                      label: 'Total',
+                      value: '$total',
+                      color: AppColors.onSurface),
                   const SizedBox(width: 8),
-                  _MetricBadge(label: 'Aktif', value: '$aktif', color: const Color(0xFF10B981)),
+                  _MetricBadge(
+                      label: 'Aktif',
+                      value: '$aktif',
+                      color: const Color(0xFF10B981)),
                   const SizedBox(width: 8),
-                  _MetricBadge(label: 'Baru', value: '$baru', color: const Color(0xFFF59E0B)),
+                  _MetricBadge(
+                      label: 'Baru',
+                      value: '$baru',
+                      color: const Color(0xFFF59E0B)),
                   const SizedBox(width: 8),
-                  _MetricBadge(label: 'Ditangguhkan', value: '$ditangguhkan', color: AppColors.error),
+                  _MetricBadge(
+                      label: 'Ditangguhkan',
+                      value: '$ditangguhkan',
+                      color: AppColors.error),
+                  const SizedBox(width: 8),
+                  _MetricBadge(
+                      label: 'Diblokir',
+                      value: '$diblokir',
+                      color: AppColors.error),
                 ],
               ),
             );
@@ -655,7 +782,10 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
           decoration: BoxDecoration(
             color: AppColors.surfaceContainerLowest,
             borderRadius: BorderRadius.circular(24),
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10)],
+            boxShadow: [
+              BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03), blurRadius: 10)
+            ],
           ),
           child: _loading
               ? const Padding(
@@ -668,101 +798,125 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                       child: Center(
                         child: Text(
                           'Belum ada pengguna terdaftar di database.',
-                          style: TextStyle(color: AppColors.secondary, fontSize: 13),
+                          style: TextStyle(
+                              color: AppColors.secondary, fontSize: 13),
                         ),
                       ),
                     )
                   : Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: const BoxDecoration(
-                  color: AppColors.surfaceContainerLow,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('PENGGUNA', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                    Text('TINDAKAN', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                  ],
-                ),
-              ),
-              ...filtered.map((user) {
-                return Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
-                    children: [
-                      AppCachedImage(
-                        imageUrl: user.avatar,
-                        width: 40,
-                        height: 40,
-                        isCircle: true,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(user.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                            Text(user.email, style: const TextStyle(color: AppColors.secondary, fontSize: 11)),
-                            Text(
-                              '${user.code} • ${user.role}',
-                              style: const TextStyle(color: AppColors.primary, fontSize: 10, fontWeight: FontWeight.w600),
-                            ),
-                          ],
-                        ),
-                      ),
-                      OutlinedButton(
-                        onPressed: () async {
-                          final nextStatus =
-                              user.status == 'Ditangguhkan' ? 'active' : 'suspended';
-                          final res = await RecipeService.setUserStatus(
-                            user.id,
-                            nextStatus,
-                          );
-                          if (!mounted) return;
-                          if (res.ok) {
-                            setState(() {
-                              user.status =
-                                  nextStatus == 'suspended' ? 'Ditangguhkan' : 'Aktif';
-                            });
-                          }
-                          widget.onShowToast?.call(
-                            res.message.isEmpty ? 'Status gagal diubah.' : res.message,
-                          );
-                        },
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          minimumSize: const Size(60, 32),
-                        ),
-                        child: Text(
-                          user.status == 'Ditangguhkan' ? 'Aktifkan' : 'Nonaktif',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: user.status == 'Ditangguhkan' ? AppColors.primary : AppColors.secondary,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 10),
+                          decoration: const BoxDecoration(
+                            color: AppColors.surfaceContainerLow,
+                            borderRadius:
+                                BorderRadius.vertical(top: Radius.circular(24)),
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('PENGGUNA',
+                                  style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold)),
+                              Text('TINDAKAN',
+                                  style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold)),
+                            ],
                           ),
                         ),
-                      ),
-                      IconButton(
-                        onPressed: () async {
-                          final res = await RecipeService.deleteUser(user.id);
-                          if (!mounted) return;
-                          if (res.ok) {
-                            setState(() => _users.remove(user));
-                          }
-                          widget.onShowToast?.call(
-                            res.message.isEmpty ? 'Gagal menghapus akun.' : res.message,
+                        ...filtered.map((user) {
+                          return Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Row(
+                              children: [
+                                AppCachedImage(
+                                  imageUrl: user.avatar,
+                                  width: 40,
+                                  height: 40,
+                                  isCircle: true,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(user.name,
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 13)),
+                                      Text(user.email,
+                                          style: const TextStyle(
+                                              color: AppColors.secondary,
+                                              fontSize: 11)),
+                                      Text(
+                                        '${user.code} • ${user.role}',
+                                        style: const TextStyle(
+                                            color: AppColors.primary,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w600),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                OutlinedButton(
+                                  onPressed: () async {
+                                    final nextStatus = user.status == 'Aktif'
+                                        ? 'suspended'
+                                        : 'active';
+                                    final res =
+                                        await RecipeService.setUserStatus(
+                                      user.id,
+                                      nextStatus,
+                                    );
+                                    if (!mounted) return;
+                                    if (res.ok) {
+                                      setState(() {
+                                        user.status = nextStatus == 'suspended'
+                                            ? 'Ditangguhkan'
+                                            : 'Aktif';
+                                      });
+                                    }
+                                    widget.onShowToast?.call(
+                                      res.message.isEmpty
+                                          ? 'Status gagal diubah.'
+                                          : res.message,
+                                    );
+                                  },
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 4),
+                                    minimumSize: const Size(60, 32),
+                                  ),
+                                  child: Text(
+                                    user.status == 'Aktif'
+                                        ? 'Tangguhkan'
+                                        : 'Aktifkan',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: user.status == 'Ditangguhkan'
+                                          ? AppColors.primary
+                                          : AppColors.secondary,
+                                    ),
+                                  ),
+                                ),
+                                IconButton(
+                                  onPressed: user.status == 'Diblokir'
+                                      ? null
+                                      : () => _banUser(user),
+                                  tooltip: 'Blokir pengguna',
+                                  icon: const Icon(Icons.block,
+                                      size: 18, color: AppColors.error),
+                                ),
+                              ],
+                            ),
                           );
-                        },
-                        icon: const Icon(Icons.delete_outline, size: 18, color: AppColors.error),
-                      ),
-                    ],
-                  ),
-                );
-              }),
-            ],
-          ),
+                        }),
+                      ],
+                    ),
         ),
         const SizedBox(height: 20),
       ],
@@ -775,7 +929,8 @@ class _MetricBadge extends StatelessWidget {
   final String value;
   final Color color;
 
-  const _MetricBadge({required this.label, required this.value, required this.color});
+  const _MetricBadge(
+      {required this.label, required this.value, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -788,11 +943,17 @@ class _MetricBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+          Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
           const SizedBox(width: 6),
-          Text(label, style: const TextStyle(fontSize: 11, color: AppColors.secondary)),
+          Text(label,
+              style: const TextStyle(fontSize: 11, color: AppColors.secondary)),
           const SizedBox(width: 4),
-          Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+          Text(value,
+              style:
+                  const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
         ],
       ),
     );
@@ -800,6 +961,10 @@ class _MetricBadge extends StatelessWidget {
 }
 
 class AdminSettingsScreen extends StatefulWidget {
+  final String userName;
+  final String userEmail;
+  final String? userAvatar;
+  final VoidCallback onEditProfile;
   final bool darkMode;
   final ValueChanged<bool> onToggleDarkMode;
   final VoidCallback onLogoutAdmin;
@@ -807,6 +972,10 @@ class AdminSettingsScreen extends StatefulWidget {
 
   const AdminSettingsScreen({
     super.key,
+    required this.userName,
+    required this.userEmail,
+    this.userAvatar,
+    required this.onEditProfile,
     required this.darkMode,
     required this.onToggleDarkMode,
     required this.onLogoutAdmin,
@@ -823,14 +992,17 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Ubah Kata Sandi Admin', style: TextStyle(fontSize: 16)),
+        title:
+            const Text('Ubah Kata Sandi Admin', style: TextStyle(fontSize: 16)),
         content: TextField(
           controller: passCtrl,
           obscureText: true,
           decoration: const InputDecoration(labelText: 'Kata Sandi Baru'),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Batal')),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Batal')),
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
@@ -854,24 +1026,39 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
           decoration: BoxDecoration(
             color: AppColors.surfaceContainerLowest,
             borderRadius: BorderRadius.circular(28),
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10)],
+            boxShadow: [
+              BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03), blurRadius: 10)
+            ],
           ),
-          child: const Row(
+          child: Row(
             children: [
-              AppCachedImage(
-                imageUrl: MockImages.adminHeadChef,
-                width: 64,
-                height: 64,
-                isCircle: true,
+              Tooltip(
+                message: 'Ubah foto profil',
+                child: InkWell(
+                  onTap: widget.onEditProfile,
+                  child: AppCachedImage(
+                    imageUrl: widget.userAvatar ?? '',
+                    width: 64,
+                    height: 64,
+                    isCircle: true,
+                  ),
+                ),
               ),
-              SizedBox(width: 14),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Admin Utama', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                    Text('Super Administrator', style: TextStyle(color: AppColors.secondary, fontSize: 12)),
-                    Text('admin@kuliner.app', style: TextStyle(color: AppColors.onSurfaceVariant, fontSize: 12)),
+                    Text(widget.userName,
+                        style: const TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.bold)),
+                    const Text('Administrator',
+                        style: TextStyle(
+                            color: AppColors.secondary, fontSize: 12)),
+                    Text(widget.userEmail,
+                        style: const TextStyle(
+                            color: AppColors.onSurfaceVariant, fontSize: 12)),
                   ],
                 ),
               ),
@@ -880,7 +1067,11 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
         ),
         const SizedBox(height: 24),
 
-        const Text('KEAMANAN', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.secondary)),
+        const Text('KEAMANAN',
+            style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: AppColors.secondary)),
         const SizedBox(height: 8),
         Container(
           decoration: BoxDecoration(
@@ -892,14 +1083,19 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
             child: ListTile(
               onTap: _changePasswordDialog,
               leading: const Icon(Icons.lock_reset, color: AppColors.primary),
-              title: const Text('Ubah Kata Sandi Admin', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+              title: const Text('Ubah Kata Sandi Admin',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
               trailing: const Icon(Icons.chevron_right, size: 20),
             ),
           ),
         ),
         const SizedBox(height: 24),
 
-        const Text('TAMPILAN & TEMA', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.secondary)),
+        const Text('TAMPILAN & TEMA',
+            style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: AppColors.secondary)),
         const SizedBox(height: 8),
         Container(
           decoration: BoxDecoration(
@@ -913,9 +1109,13 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                 value: widget.darkMode,
                 onChanged: widget.onToggleDarkMode,
                 activeThumbColor: AppColors.primary,
-                title: const Text('Mode Gelap (Dark Mode)', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                subtitle: const Text('Gunakan tema gelap untuk kenyamanan mata', style: TextStyle(fontSize: 11)),
-                secondary: const Icon(Icons.dark_mode_outlined, color: AppColors.primary),
+                title: const Text('Mode Gelap (Dark Mode)',
+                    style:
+                        TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                subtitle: const Text('Gunakan tema gelap untuk kenyamanan mata',
+                    style: TextStyle(fontSize: 11)),
+                secondary: const Icon(Icons.dark_mode_outlined,
+                    color: AppColors.primary),
               ),
             ),
           ),
@@ -925,11 +1125,14 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
         ElevatedButton.icon(
           onPressed: widget.onLogoutAdmin,
           icon: const Icon(Icons.logout, size: 18, color: AppColors.error),
-          label: const Text('Keluar dari Sesi Admin', style: TextStyle(color: AppColors.error, fontWeight: FontWeight.bold)),
+          label: const Text('Keluar dari Sesi Admin',
+              style: TextStyle(
+                  color: AppColors.error, fontWeight: FontWeight.bold)),
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.surfaceContainerLowest,
             padding: const EdgeInsets.symmetric(vertical: 14),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           ),
         ),
         const SizedBox(height: 12),

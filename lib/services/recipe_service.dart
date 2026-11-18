@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/recipe_model.dart';
 import '../models/user_model.dart';
+import 'auth_service.dart';
 import 'firebase_service.dart';
 
 /// Hasil ringkas untuk operasi tulis data.
@@ -81,7 +82,7 @@ class RecipeService {
     }
   }
 
-  static String _errorMessage(Object e) {
+  static String errorMessage(Object e) {
     if (e is FirebaseException) {
       switch (e.code) {
         case 'permission-denied':
@@ -91,7 +92,7 @@ class RecipeService {
         case 'unauthenticated':
           return 'Sesi Anda telah berakhir. Silakan masuk kembali.';
         default:
-          return e.message ?? 'Gagal mengakses database.';
+          return 'Gagal mengakses database. Silakan coba lagi.';
       }
     }
     return 'Gagal mengakses database.';
@@ -105,24 +106,20 @@ class RecipeService {
     Set<String> favoriteIds = const {},
   }) async {
     if (!isReady) return const [];
-    try {
-      final snap = await _read(_recipes);
-      final docs = snap.docs.toList()..sort(_newestFirst);
-
-      return docs.map((doc) {
-        return Recipe.fromFirestore(
-          doc.id,
-          doc.data(),
-          isFavorite: favoriteIds.contains(doc.id),
-          currentUid: currentUid,
-        );
-      }).toList();
-    } catch (_) {
-      return const [];
-    }
+    final snap = await _read(_recipes);
+    final docs = snap.docs.toList()..sort(_newestFirst);
+    return docs
+        .map((doc) => Recipe.fromFirestore(
+              doc.id,
+              doc.data(),
+              isFavorite: favoriteIds.contains(doc.id),
+              currentUid: currentUid,
+            ))
+        .toList();
   }
 
-  static Future<ServiceResult> createRecipe({
+  static Future<ServiceResult> saveRecipe({
+    String? recipeId,
     required String authorId,
     required String authorName,
     String? authorAvatar,
@@ -138,12 +135,14 @@ class RecipeService {
     required List<Map<String, String>> steps,
   }) async {
     if (!isReady) return _notConfigured;
+    if (!AuthService.hasRealSession ||
+        AuthService.firebaseUser?.uid != authorId) {
+      return const ServiceResult(
+          ok: false,
+          message: 'Masuk dengan akun pemilik resep terlebih dahulu.');
+    }
     try {
-      final now = DateTime.now();
-      final code = '#RSP-${1000 + now.millisecondsSinceEpoch % 9000}';
-
-      await _recipes.add({
-        'code': code,
+      final data = <String, dynamic>{
         'title': title,
         'description': description,
         'category': category,
@@ -153,6 +152,41 @@ class RecipeService {
         'difficulty': difficulty,
         'image': image,
         'images': images,
+        'ingredients': ingredients,
+        'steps': steps,
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      if (recipeId != null) {
+        return await _db.runTransaction<ServiceResult>((transaction) async {
+          final ref = _recipes.doc(recipeId);
+          final snapshot = await transaction.get(ref);
+          if (!snapshot.exists) {
+            return const ServiceResult(
+                ok: false, message: 'Resep sudah tidak tersedia.');
+          }
+          if (snapshot.data()?['authorId'] != authorId) {
+            final actor = await transaction.get(_users.doc(authorId));
+            final data = actor.data();
+            if (data == null ||
+                data['role'] != 'admin' ||
+                (data['status'] ?? 'active') != 'active') {
+              return const ServiceResult(
+                  ok: false,
+                  message: 'Anda hanya bisa mengedit resep sendiri.');
+            }
+          }
+          transaction.update(ref, data);
+          return const ServiceResult(
+              ok: true, message: 'Perubahan resep berhasil disimpan.');
+        });
+      }
+
+      final now = DateTime.now();
+      final code = '#RSP-${1000 + now.millisecondsSinceEpoch % 9000}';
+      await _recipes.add({
+        ...data,
+        'code': code,
         'authorId': authorId,
         'authorName': authorName,
         'authorAvatar': authorAvatar,
@@ -161,10 +195,7 @@ class RecipeService {
         'reportedCount': 0,
         'verified': false,
         'status': 'published',
-        'ingredients': ingredients,
-        'steps': steps,
         'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
       });
 
       return ServiceResult(
@@ -173,7 +204,7 @@ class RecipeService {
         message: 'Resep "$title" berhasil dipublikasikan!',
       );
     } catch (e) {
-      return ServiceResult(ok: false, message: _errorMessage(e));
+      return ServiceResult(ok: false, message: errorMessage(e));
     }
   }
 
@@ -182,22 +213,10 @@ class RecipeService {
     try {
       await _recipes.doc(id).delete();
     } catch (e) {
-      return ServiceResult(ok: false, message: _errorMessage(e));
+      return ServiceResult(ok: false, message: errorMessage(e));
     }
 
-    // Bersihkan favorit & laporan yang menunjuk ke resep ini (best-effort).
-    try {
-      final favs = await _read(_favorites.where('recipeId', isEqualTo: id));
-      for (final d in favs.docs) {
-        await d.reference.delete();
-      }
-      final reps = await _read(_reports.where('recipeId', isEqualTo: id));
-      for (final d in reps.docs) {
-        await d.reference.delete();
-      }
-    } catch (_) {
-      // diabaikan — resep utama sudah terhapus
-    }
+    // Favorit milik pengguna lain dan laporan moderasi tetap disimpan, bukan dihapus oleh client.
     return const ServiceResult(ok: true, message: 'Resep telah dihapus.');
   }
 
@@ -207,12 +226,8 @@ class RecipeService {
 
   static Future<Set<String>> fetchFavoriteIds(String uid) async {
     if (!isReady) return const {};
-    try {
-      final snap = await _read(_favorites.where('uid', isEqualTo: uid));
-      return snap.docs.map((d) => (d.data()['recipeId'] ?? '') as String).toSet();
-    } catch (_) {
-      return const {};
-    }
+    final snap = await _read(_favorites.where('uid', isEqualTo: uid));
+    return snap.docs.map((d) => (d.data()['recipeId'] ?? '') as String).toSet();
   }
 
   /// Tambah/hapus favorit. Mengembalikan status favorit TERBARU, atau null
@@ -242,7 +257,8 @@ class RecipeService {
 
   // ───────────────────────── LAPORAN ─────────────────────────
 
-  static Map<String, dynamic> _reportToMap(DocumentSnapshot<Map<String, dynamic>> doc) {
+  static Map<String, dynamic> _reportToMap(
+      DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? <String, dynamic>{};
     return {
       'id': doc.id,
@@ -258,13 +274,9 @@ class RecipeService {
 
   static Future<List<Map<String, dynamic>>> fetchReports() async {
     if (!isReady) return const [];
-    try {
-      final snap = await _read(_reports);
-      final docs = snap.docs.toList()..sort(_newestFirst);
-      return docs.map(_reportToMap).toList();
-    } catch (_) {
-      return const [];
-    }
+    final snap = await _read(_reports);
+    final docs = snap.docs.toList()..sort(_newestFirst);
+    return docs.map(_reportToMap).toList();
   }
 
   static Future<int> countOpenReports() async {
@@ -295,7 +307,7 @@ class RecipeService {
         message: 'Laporan terkirim. Terima kasih sudah menjaga komunitas.',
       );
     } catch (e) {
-      return ServiceResult(ok: false, message: _errorMessage(e));
+      return ServiceResult(ok: false, message: errorMessage(e));
     }
   }
 
@@ -306,9 +318,10 @@ class RecipeService {
         'status': 'resolved',
         'resolvedAt': FieldValue.serverTimestamp(),
       });
-      return const ServiceResult(ok: true, message: 'Laporan ditandai selesai.');
+      return const ServiceResult(
+          ok: true, message: 'Laporan ditandai selesai.');
     } catch (e) {
-      return ServiceResult(ok: false, message: _errorMessage(e));
+      return ServiceResult(ok: false, message: errorMessage(e));
     }
   }
 
@@ -318,7 +331,7 @@ class RecipeService {
       await _reports.doc(id).delete();
       return const ServiceResult(ok: true, message: 'Laporan dihapus.');
     } catch (e) {
-      return ServiceResult(ok: false, message: _errorMessage(e));
+      return ServiceResult(ok: false, message: errorMessage(e));
     }
   }
 
@@ -326,18 +339,14 @@ class RecipeService {
 
   static Future<List<AppUser>> fetchUsers() async {
     if (!isReady) return const [];
-    try {
-      final snap = await _read(_users);
-      final docs = snap.docs.toList()..sort(_newestFirst);
-      return docs.map((d) => AppUser.fromFirestore(d.id, d.data())).toList();
-    } catch (_) {
-      return const [];
-    }
+    final snap = await _read(_users);
+    final docs = snap.docs.toList()..sort(_newestFirst);
+    return docs.map((d) => AppUser.fromFirestore(d.id, d.data())).toList();
   }
 
   /// Admin membuat "undangan" profil. Akun login-nya baru terbentuk saat
-  /// pemilik email tersebut mendaftar lewat aplikasi (lihat
-  /// `AuthService._claimPendingProfile`).
+  /// pemilik email tersebut mendaftar lewat aplikasi. Profil pending hanya
+  /// catatan admin; client pengguna tidak membaca/menghapus profil orang lain.
   static Future<ServiceResult> createPendingUser({
     required String name,
     required String email,
@@ -371,36 +380,34 @@ class RecipeService {
       return ServiceResult(
         ok: true,
         message:
-            'Profil "$name" dibuat. Akun aktif setelah yang bersangkutan mendaftar dengan email ini.',
+            'Catatan pending "$name" dibuat. Akun login harus didaftarkan secara terpisah.',
       );
     } catch (e) {
-      return ServiceResult(ok: false, message: _errorMessage(e));
+      return ServiceResult(ok: false, message: errorMessage(e));
     }
   }
 
   static Future<ServiceResult> setUserStatus(String uid, String status) async {
     if (!isReady) return _notConfigured;
+    if (!const ['active', 'suspended', 'banned'].contains(status)) {
+      return const ServiceResult(
+          ok: false, message: 'Status pengguna tidak valid.');
+    }
+    if (uid == AuthService.firebaseUser?.uid) {
+      return const ServiceResult(
+          ok: false, message: 'Anda tidak bisa memoderasi akun sendiri.');
+    }
     try {
-      await _users.doc(uid).set(
+      await _users.doc(uid).update(
         {'status': status, 'updatedAt': FieldValue.serverTimestamp()},
-        SetOptions(merge: true),
       );
-      return const ServiceResult(ok: true, message: 'Status pengguna diperbarui.');
+      return const ServiceResult(
+          ok: true, message: 'Status pengguna diperbarui.');
     } catch (e) {
-      return ServiceResult(ok: false, message: _errorMessage(e));
+      return ServiceResult(ok: false, message: errorMessage(e));
     }
   }
 
-  static Future<ServiceResult> deleteUser(String uid) async {
-    if (!isReady) return _notConfigured;
-    try {
-      await _users.doc(uid).delete();
-      return const ServiceResult(
-        ok: true,
-        message: 'Profil pengguna dihapus. (Akun login perlu dihapus lewat Firebase Console)',
-      );
-    } catch (e) {
-      return ServiceResult(ok: false, message: _errorMessage(e));
-    }
-  }
+  static Future<ServiceResult> banUser(String uid) =>
+      setUserStatus(uid, 'banned');
 }

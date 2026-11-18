@@ -11,7 +11,7 @@ class AppUser {
   /// 'user' | 'admin'
   final String role;
 
-  /// 'active' | 'suspended'
+  /// 'active' | 'suspended' | 'banned' (profil pending lama memakai 'baru').
   String status;
 
   final String? avatar;
@@ -43,6 +43,11 @@ class AppUser {
 
   bool get isAdmin => role == 'admin';
   bool get isSuspended => status == 'suspended';
+  bool get isActive => status == 'active';
+  bool get isBanned => status == 'banned';
+  String get accessDeniedMessage => isBanned
+      ? 'Akun Anda diblokir oleh admin. Silakan hubungi admin.'
+      : 'Akun Anda ditangguhkan atau belum aktif. Silakan hubungi admin.';
   bool get isPending => pending;
 
   /// Bahasa Indonesia untuk daftar admin.
@@ -50,10 +55,14 @@ class AppUser {
     switch (status) {
       case 'suspended':
         return 'Ditangguhkan';
+      case 'banned':
+        return 'Diblokir';
       case 'baru':
         return 'Baru';
-      default:
+      case 'active':
         return 'Aktif';
+      default:
+        return 'Tidak aktif';
     }
   }
 
@@ -69,13 +78,13 @@ class AppUser {
   }
 
   factory AppUser.fromFirestore(String uid, Map<String, dynamic> data) {
-    final rawStatus = (data['status'] ?? 'active') as String;
+    final rawStatus = data.containsKey('status') ? data['status'] : 'active';
     return AppUser(
       uid: uid,
       name: (data['name'] ?? '') as String,
       email: (data['email'] ?? '') as String,
       role: (data['role'] ?? 'user') as String,
-      status: rawStatus == 'baru' ? 'baru' : rawStatus,
+      status: rawStatus is String ? rawStatus : 'unknown',
       avatar: data['avatar'] as String?,
       provider: (data['provider'] ?? 'password') as String,
       code: (data['code'] as String?) ?? AppUser.codeFromUid(uid),
@@ -113,8 +122,9 @@ class AppUser {
       'provider': provider,
       'code': code,
       'pending': pending,
-      'createdAt':
-          createdAt != null ? Timestamp.fromDate(createdAt!) : FieldValue.serverTimestamp(),
+      'createdAt': createdAt != null
+          ? Timestamp.fromDate(createdAt!)
+          : FieldValue.serverTimestamp(),
     };
   }
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../models/recipe_model.dart';
 import '../models/user_model.dart';
@@ -48,6 +50,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   bool _pendingUploadAfterLogin = false;
 
   bool _loadingRecipes = true;
+  Recipe? _editingRecipe;
 
   // User Mode Index: 0: Beranda, 1: Eksplor, 2: Unggah, 3: Favorit, 4: Profil
   int _userNavIndex = 0;
@@ -61,6 +64,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   late List<Recipe> _recipes;
   String? _toastMessage;
   bool _offlineMode = false;
+  StreamSubscription<AppUser?>? _profileSubscription;
+  bool _loggingOut = false;
 
   @override
   void initState() {
@@ -71,24 +76,20 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   /// Urutan awal aplikasi:
   /// 1. siapkan Firebase (bila sudah dikonfigurasi)
-  /// 2. pulihkan sesi tersimpan, atau buat sesi tamu (anonim)
+  /// 2. pulihkan sesi tersimpan; tamu tidak perlu sesi Firebase untuk membaca resep
   /// 3. muat daftar resep
   Future<void> _bootstrap() async {
     await FirebaseService.init();
 
     if (FirebaseService.isReady) {
+      final hadSession = AuthService.hasRealSession;
       final restored = await AuthService.restoreSession();
+      if (!mounted) return;
       if (restored.ok && restored.user != null) {
         _applyUser(restored.user!);
-      } else {
-        // Mode tamu: beri identitas anonim agar aturan keamanan Firestore
-        // tetap bisa diterapkan. Gagal pun aplikasi tetap jalan sebagai tamu.
-        try {
-          await AuthService.signInAnonymously()
-              .timeout(const Duration(seconds: 5));
-        } catch (_) {
-          // diabaikan — tamu tanpa sesi Firebase tetap sah
-        }
+        _watchCurrentUser();
+      } else if (hadSession) {
+        _showToast(restored.message);
       }
     }
 
@@ -113,47 +114,75 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     _currentUserName = 'Tamu';
     _currentUserEmail = 'guest@resepoma.id';
     _currentUserAvatar = null;
+    _editingRecipe = null;
+    _pendingUploadAfterLogin = false;
+  }
+
+  void _watchCurrentUser() {
+    // Listener mengikuti sesi agar moderasi tidak menunggu pengguna login ulang.
+    _profileSubscription?.cancel();
+    final uid = _currentUserId;
+    if (uid == null) return;
+    _profileSubscription = AuthService.watchProfile(uid).listen((profile) {
+      // Abaikan event sesi lama yang masih antre setelah pergantian akun atau logout.
+      if (!mounted || _loggingOut || uid != _currentUserId) return;
+      if (profile == null || !profile.isActive) {
+        _handleLogout(
+            message: profile?.accessDeniedMessage ??
+                'Profil akun tidak ditemukan. Silakan hubungi admin.');
+        return;
+      }
+      setState(() {
+        _applyUser(profile);
+        if (!profile.isAdmin && _currentMode == AppMode.admin) {
+          _currentMode = AppMode.user;
+        }
+      });
+    }, onError: (Object error) {
+      if (mounted && uid == _currentUserId) {
+        _handleLogout(message: AuthService.profileErrorMessage(error));
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _profileSubscription?.cancel();
+    super.dispose();
   }
 
   /// Muat daftar resep dari Firestore.
-  /// Jika Firebase belum terkonfigurasi atau koleksi masih kosong,
-  /// otomatis tampil data contoh (mode offline / demo).
+  /// Data contoh hanya dipakai tanpa Firebase; kegagalan izin tidak disamarkan sebagai katalog kosong.
   Future<void> _loadRecipes() async {
     setState(() => _loadingRecipes = true);
 
-    final uid = _currentUserId;
-    Set<String> favIds = const {};
-    if (uid != null) {
-      favIds = await RecipeService.fetchFavoriteIds(uid);
+    if (!FirebaseService.isReady) {
+      setState(() {
+        _recipes = MockData.getInitialRecipes();
+        _offlineMode = true;
+        _loadingRecipes = false;
+      });
+      _showToast(
+          '${FirebaseService.humanError} Menampilkan resep contoh (mode offline).');
+      return;
     }
-
-    final recipes = await RecipeService.fetchRecipes(
-      currentUid: uid,
-      favoriteIds: favIds,
-    );
-
-    if (!mounted) return;
-
-    if (recipes.isNotEmpty) {
+    final uid = _currentUserId;
+    try {
+      final favIds =
+          uid == null ? <String>{} : await RecipeService.fetchFavoriteIds(uid);
+      final recipes = await RecipeService.fetchRecipes(
+          currentUid: uid, favoriteIds: favIds);
+      if (!mounted || _loggingOut || uid != _currentUserId) return;
       setState(() {
         _recipes = recipes;
         _offlineMode = false;
         _loadingRecipes = false;
       });
-      return;
+    } catch (e) {
+      if (!mounted || _loggingOut || uid != _currentUserId) return;
+      setState(() => _loadingRecipes = false);
+      _showToast(RecipeService.errorMessage(e));
     }
-
-    final notConfigured = !FirebaseService.isReady;
-    setState(() {
-      _recipes = MockData.getInitialRecipes();
-      _offlineMode = true;
-      _loadingRecipes = false;
-    });
-    _showToast(
-      notConfigured
-          ? '${FirebaseService.humanError} Menampilkan resep contoh (mode offline).'
-          : 'Database masih kosong. Menampilkan resep contoh (mode demo).',
-    );
   }
 
   void _showToast(String msg) {
@@ -166,6 +195,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 
   void _onTapUpload() {
+    _editingRecipe = null;
     if (!_isLoggedIn) {
       _showAuthRequiredSheet();
     } else {
@@ -176,86 +206,105 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     }
   }
 
-  void _showAuthRequiredSheet() {
+  void _showAuthRequiredSheet({bool forUpload = true}) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: widget.darkMode ? AppColors.darkSurfaceContainer : AppColors.surface,
+          color: widget.darkMode
+              ? AppColors.darkSurfaceContainer
+              : AppColors.surface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 56,
-              height: 56,
-              decoration: const BoxDecoration(
-                color: AppColors.primaryFixed,
-                shape: BoxShape.circle,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: const BoxDecoration(
+                  color: AppColors.primaryFixed,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.lock_person,
+                    color: AppColors.primary, size: 28),
               ),
-              child: const Icon(Icons.lock_person, color: AppColors.primary, size: 28),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Masuk Akun Diperlukan',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Saat ini Anda memakai akun Tamu (Guest). Untuk mengunggah kreasi resep ke komunitas Resep Oma, silakan registrasi akun terlebih dahulu atau login jika sudah terdaftar.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.onSurfaceVariant, fontSize: 13, height: 1.4),
-            ),
-            const SizedBox(height: 22),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                setState(() {
-                  _pendingUploadAfterLogin = true;
-                  _currentMode = AppMode.auth;
-                  _authScreen = 'register'; // Registrasi terlebih dahulu!
-                });
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 48),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              const SizedBox(height: 16),
+              const Text(
+                'Masuk Akun Diperlukan',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
-              child: const Text('Daftar Akun Baru (Registrasi)', style: TextStyle(fontWeight: FontWeight.bold)),
-            ),
-            const SizedBox(height: 10),
-            OutlinedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                setState(() {
-                  _pendingUploadAfterLogin = true;
-                  _currentMode = AppMode.auth;
-                  _authScreen = 'login';
-                });
-              },
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 48),
-                side: const BorderSide(color: AppColors.primary),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              const SizedBox(height: 8),
+              const Text(
+                'Untuk menyimpan favorit atau mengunggah resep, silakan masuk atau daftarkan akun terlebih dahulu.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    color: AppColors.onSurfaceVariant,
+                    fontSize: 13,
+                    height: 1.4),
               ),
-              child: const Text('Sudah Punya Akun? Masuk', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
-            ),
-            const SizedBox(height: 8),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Nanti Saja (Lanjut sebagai Tamu)', style: TextStyle(color: AppColors.secondary)),
-            ),
-          ],
+              const SizedBox(height: 22),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  setState(() {
+                    _pendingUploadAfterLogin = forUpload;
+                    _currentMode = AppMode.auth;
+                    _authScreen = 'register'; // Registrasi terlebih dahulu!
+                  });
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 48),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24)),
+                ),
+                child: const Text('Daftar Akun Baru (Registrasi)',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  setState(() {
+                    _pendingUploadAfterLogin = forUpload;
+                    _currentMode = AppMode.auth;
+                    _authScreen = 'login';
+                  });
+                },
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 48),
+                  side: const BorderSide(color: AppColors.primary),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24)),
+                ),
+                child: const Text('Sudah Punya Akun? Masuk',
+                    style: TextStyle(
+                        color: AppColors.primary, fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Nanti Saja (Lanjut sebagai Tamu)',
+                    style: TextStyle(color: AppColors.secondary)),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
   void _handleLoginSuccess(AppUser user) {
+    if (_loggingOut) return;
+    if (!user.isActive) {
+      _handleLogout(message: user.accessDeniedMessage);
+      return;
+    }
     setState(() {
       _applyUser(user);
       _currentMode = AppMode.user;
@@ -268,46 +317,49 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         _showToast('Selamat datang, $_currentUserName!');
       }
     });
+    _watchCurrentUser();
     // Muat ulang resep agar flag favorit & "Resep Saya" sesuai user login.
     _loadRecipes();
   }
 
-  void _handleLogout() async {
-    await AuthService.signOut();
-    if (!mounted) return;
+  Future<void> _handleLogout({String? message}) async {
+    if (_loggingOut || !mounted) return;
+    _loggingOut = true;
+    final subscription = _profileSubscription;
+    _profileSubscription = null;
+    Navigator.of(context).popUntil((route) => route.isFirst);
     setState(() {
       _resetGuestState();
       _userNavIndex = 0;
       _currentMode = AppMode.user;
+      _loadingRecipes = false;
+      _recipes = _recipes
+          .map((r) => r.copyWith(isFavorite: false, isMyRecipe: false))
+          .toList();
     });
-    // Reset favorit di daftar resep
-    for (final r in _recipes) {
-      r.isFavorite = false;
-    }
-    _showToast('Anda telah keluar. Sekarang menjelajah sebagai Tamu.');
+    _showToast(
+        message ?? 'Anda telah keluar. Sekarang menjelajah sebagai Tamu.');
+    await subscription?.cancel();
+    await AuthService.signOut();
+    _loggingOut = false;
   }
 
   void _toggleFavorite(String id) async {
     final uid = _currentUserId;
+    if (!_isLoggedIn || uid == null) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      _showAuthRequiredSheet(forUpload: false);
+      return;
+    }
 
-    // Tamu / mode offline (data contoh): toggle lokal saja.
-    if (uid == null || _offlineMode || !FirebaseService.isReady) {
-      setState(() {
-        final idx = _recipes.indexWhere((r) => r.id == id);
-        if (idx != -1) {
-          _recipes[idx].isFavorite = !_recipes[idx].isFavorite;
-          final isFav = _recipes[idx].isFavorite;
-          _showToast(isFav
-              ? '"${_recipes[idx].title}" disimpan ke Favorit'
-              : '"${_recipes[idx].title}" dihapus dari Favorit');
-        }
-      });
+    if (_offlineMode || !FirebaseService.isReady) {
+      _showToast('Favorit hanya bisa disimpan untuk resep dari database.');
       return;
     }
 
     final newState = await RecipeService.toggleFavorite(uid: uid, recipeId: id);
 
-    if (!mounted) return;
+    if (!mounted || _loggingOut || uid != _currentUserId) return;
 
     if (newState == null) {
       _showToast('Gagal memperbarui favorit. Periksa koneksi internet Anda.');
@@ -344,7 +396,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     setState(() => _userNavIndex = 0);
   }
 
-  void _deleteRecipe(String id) async {
+  Future<void> _deleteRecipe(String id) async {
     final idx = _recipes.indexWhere((r) => r.id == id);
     final target = idx != -1 ? _recipes[idx] : null;
 
@@ -360,14 +412,17 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     if (!mounted) return;
 
     if (res.ok) {
+      setState(() => _recipes.removeWhere((r) => r.id == id));
       await _loadRecipes();
+      if (!mounted) return;
       _showToast(
         res.message.isNotEmpty
             ? res.message
             : 'Resep "${target?.title ?? ''}" telah dihapus.',
       );
     } else {
-      _showToast(res.message.isNotEmpty ? res.message : 'Gagal menghapus resep.');
+      _showToast(
+          res.message.isNotEmpty ? res.message : 'Gagal menghapus resep.');
     }
   }
 
@@ -382,7 +437,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           ? LoginScreen(
               initialEmail: _prefilledLoginEmail,
               onLoginSuccess: _handleLoginSuccess,
-              onNavigateToRegister: () => setState(() => _authScreen = 'register'),
+              onNavigateToRegister: () =>
+                  setState(() => _authScreen = 'register'),
               onBackToGuest: () => setState(() => _currentMode = AppMode.user),
               onShowToast: _showToast,
             )
@@ -397,6 +453,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         currentScreenWidget = AdminRecipesScreen(
           recipes: _recipes,
           onSelectRecipe: _selectRecipe,
+          onDeleteRecipe: _deleteRecipe,
           onNavigateToUpload: _onTapUpload,
           onShowToast: _showToast,
         );
@@ -404,6 +461,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         currentScreenWidget = AdminUsersScreen(onShowToast: _showToast);
       } else {
         currentScreenWidget = AdminSettingsScreen(
+          userName: _currentUserName,
+          userEmail: _currentUserEmail,
+          userAvatar: _currentUserAvatar,
+          onEditProfile: () => setState(() {
+            _currentMode = AppMode.user;
+            _userNavIndex = 4;
+          }),
           darkMode: widget.darkMode,
           onToggleDarkMode: widget.onToggleDarkMode,
           onLogoutAdmin: () => setState(() => _currentMode = AppMode.user),
@@ -431,6 +495,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           break;
         case 2:
           currentScreenWidget = UnggahResepScreen(
+            key: ValueKey(_editingRecipe?.id),
+            recipe: _editingRecipe,
             onPublishRecipe: _publishRecipe,
             userId: _currentUserId,
             userName: _currentUserName,
@@ -457,6 +523,17 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             userAvatar: _currentUserAvatar,
             onSelectRecipe: _selectRecipe,
             onDeleteRecipe: _deleteRecipe,
+            onEditRecipe: (recipe) {
+              if (!_isLoggedIn || !recipe.isMyRecipe || _offlineMode) {
+                _showToast(
+                    'Hanya resep milik Anda di database yang bisa diedit.');
+                return;
+              }
+              setState(() {
+                _editingRecipe = recipe;
+                _userNavIndex = 2;
+              });
+            },
             onNavigateToUpload: _onTapUpload,
             onNavigateToFavorites: () => setState(() => _userNavIndex = 3),
             onNavigateToAdmin: () {
@@ -468,6 +545,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 _currentMode = AppMode.admin;
                 _adminNavIndex = 0;
               });
+              _loadRecipes();
             },
             onLogout: _handleLogout,
             onUpdateProfile: (name, email, updated) {
@@ -502,7 +580,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                         SizedBox(height: 16),
                         Text(
                           'Memuat resep dari database...',
-                          style: TextStyle(color: AppColors.secondary, fontSize: 13),
+                          style: TextStyle(
+                              color: AppColors.secondary, fontSize: 13),
                         ),
                       ],
                     ),
@@ -518,7 +597,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               right: 20,
               child: Center(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
                   decoration: BoxDecoration(
                     color: AppColors.inverseSurface,
                     borderRadius: BorderRadius.circular(24),
@@ -533,7 +613,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.check_circle, color: AppColors.primaryFixedDim, size: 18),
+                      const Icon(Icons.check_circle,
+                          color: AppColors.primaryFixedDim, size: 18),
                       const SizedBox(width: 8),
                       Flexible(
                         child: Text(
@@ -561,7 +642,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
     // Responsive Desktop / Tablet Wrapper: centers the mobile phone shell cleanly
     return Scaffold(
-      backgroundColor: widget.darkMode ? const Color(0xFF0A0A0C) : const Color(0xFFE2DFE8),
+      backgroundColor:
+          widget.darkMode ? const Color(0xFF0A0A0C) : const Color(0xFFE2DFE8),
       body: Center(
         child: Container(
           width: 430,
@@ -589,7 +671,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     if (_currentMode == AppMode.admin) {
       return Container(
         decoration: BoxDecoration(
-          color: widget.darkMode ? AppColors.darkSurfaceContainer : AppColors.surface,
+          color: widget.darkMode
+              ? AppColors.darkSurfaceContainer
+              : AppColors.surface,
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.05),
@@ -608,9 +692,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             elevation: 0,
             type: BottomNavigationBarType.fixed,
             items: const [
-              BottomNavigationBarItem(icon: Icon(Icons.menu_book), label: 'Recipes'),
+              BottomNavigationBarItem(
+                  icon: Icon(Icons.menu_book), label: 'Recipes'),
               BottomNavigationBarItem(icon: Icon(Icons.group), label: 'Users'),
-              BottomNavigationBarItem(icon: Icon(Icons.tune), label: 'Settings'),
+              BottomNavigationBarItem(
+                  icon: Icon(Icons.tune), label: 'Settings'),
             ],
           ),
         ),
@@ -620,7 +706,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     // User Mode Navigation Bar
     return Container(
       decoration: BoxDecoration(
-        color: widget.darkMode ? AppColors.darkSurfaceContainer : AppColors.surface,
+        color: widget.darkMode
+            ? AppColors.darkSurfaceContainer
+            : AppColors.surface,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.05),
@@ -644,7 +732,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: _userNavIndex == 2 ? AppColors.primary : AppColors.surfaceContainerHigh,
+                    color: _userNavIndex == 2
+                        ? AppColors.primary
+                        : AppColors.surfaceContainerHigh,
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
@@ -656,7 +746,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   ),
                   child: Icon(
                     Icons.add,
-                    color: _userNavIndex == 2 ? Colors.white : AppColors.onSurface,
+                    color:
+                        _userNavIndex == 2 ? Colors.white : AppColors.onSurface,
                     size: 24,
                   ),
                 ),

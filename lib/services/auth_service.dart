@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
@@ -55,18 +56,7 @@ class AuthService {
       return const AuthResult(ok: false, message: 'Sesi tamu (anonim).');
     }
 
-    final profile = await _loadProfile(user);
-    if (profile == null) {
-      return const AuthResult(ok: false, message: 'Profil pengguna tidak ditemukan.');
-    }
-    if (profile.isSuspended) {
-      await _safeSignOut();
-      return const AuthResult(
-        ok: false,
-        message: 'Akun Anda ditangguhkan oleh admin. Silakan hubungi admin.',
-      );
-    }
-    return AuthResult(ok: true, message: 'Sesi dipulihkan.', user: profile);
+    return _completeSignIn(user);
   }
 
   /// Buat sesi anonim untuk mode tamu (tak wajib — kegagalan diabaikan).
@@ -116,12 +106,10 @@ class AuthService {
       );
       final user = cred.user;
       if (user == null) {
-        return const AuthResult(ok: false, message: 'Registrasi gagal. Coba lagi.');
+        return const AuthResult(
+            ok: false, message: 'Registrasi gagal. Coba lagi.');
       }
       await user.updateDisplayName(name);
-
-      // Ambil alih profil "undangan" yang dibuat admin (jika ada).
-      await _claimPendingProfile(email);
 
       final profile = AppUser.fromAuth(
         user.uid,
@@ -130,11 +118,12 @@ class AuthService {
         provider: 'password',
       );
       await _saveProfile(profile);
-      return AuthResult(ok: true, message: 'Registrasi berhasil!', user: profile);
+      return await _completeSignIn(user);
     } on FirebaseAuthException catch (e) {
       return AuthResult(ok: false, message: _mapError(e));
     } catch (e) {
-      return AuthResult(ok: false, message: 'Registrasi gagal. $e');
+      await _safeSignOut();
+      return AuthResult(ok: false, message: profileErrorMessage(e));
     }
   }
 
@@ -152,26 +141,12 @@ class AuthService {
       if (user == null) {
         return const AuthResult(ok: false, message: 'Login gagal. Coba lagi.');
       }
-      final profile = await _loadProfile(user);
-      if (profile == null) {
-        return const AuthResult(ok: false, message: 'Profil pengguna tidak ditemukan.');
-      }
-      if (profile.isSuspended) {
-        await _safeSignOut();
-        return const AuthResult(
-          ok: false,
-          message: 'Akun Anda ditangguhkan oleh admin. Silakan hubungi admin.',
-        );
-      }
-      return AuthResult(
-        ok: true,
-        message: 'Selamat datang kembali, ${profile.name}!',
-        user: profile,
-      );
+      return await _completeSignIn(user);
     } on FirebaseAuthException catch (e) {
       return AuthResult(ok: false, message: _mapError(e));
     } catch (e) {
-      return AuthResult(ok: false, message: 'Login gagal. $e');
+      await _safeSignOut();
+      return AuthResult(ok: false, message: profileErrorMessage(e));
     }
   }
 
@@ -179,7 +154,8 @@ class AuthService {
     if (!isReady) return _notConfigured;
     try {
       await _auth.sendPasswordResetEmail(email: email);
-      return AuthResult(ok: true, message: 'Tautan pemulihan dikirim ke $email.');
+      return AuthResult(
+          ok: true, message: 'Tautan pemulihan dikirim ke $email.');
     } on FirebaseAuthException catch (e) {
       return AuthResult(ok: false, message: _mapError(e));
     } catch (e) {
@@ -192,6 +168,14 @@ class AuthService {
   static Future<AuthResult> signInWithGoogle() async {
     if (!isReady) return _notConfigured;
     try {
+      if (kIsWeb) {
+        final cred = await _auth.signInWithPopup(GoogleAuthProvider());
+        if (cred.user == null) {
+          return const AuthResult(
+              ok: false, message: 'Login Google gagal. Coba lagi.');
+        }
+        return await _completeSignIn(cred.user!, provider: 'google');
+      }
       String? idToken;
 
       if (Platform.isWindows || Platform.isLinux) {
@@ -201,8 +185,8 @@ class AuthService {
         if (!desktop.ok) {
           return AuthResult(
             ok: false,
-            message: desktop.errorDescription ??
-                'Login Google gagal. Coba lagi.',
+            message:
+                desktop.errorDescription ?? 'Login Google gagal. Coba lagi.',
           );
         }
         idToken = desktop.idToken;
@@ -216,32 +200,19 @@ class AuthService {
       }
 
       if (idToken == null || idToken.isEmpty) {
-        return const AuthResult(ok: false, message: 'Gagal mendapatkan token Google.');
+        return const AuthResult(
+            ok: false, message: 'Gagal mendapatkan token Google.');
       }
 
       final credential = GoogleAuthProvider.credential(idToken: idToken);
       final cred = await _auth.signInWithCredential(credential);
       final user = cred.user;
       if (user == null) {
-        return const AuthResult(ok: false, message: 'Login Google gagal. Coba lagi.');
+        return const AuthResult(
+            ok: false, message: 'Login Google gagal. Coba lagi.');
       }
 
-      final profile = await _loadProfile(user, provider: 'google');
-      if (profile == null) {
-        return const AuthResult(ok: false, message: 'Profil pengguna tidak ditemukan.');
-      }
-      if (profile.isSuspended) {
-        await _safeSignOut();
-        return const AuthResult(
-          ok: false,
-          message: 'Akun Anda ditangguhkan oleh admin. Silakan hubungi admin.',
-        );
-      }
-      return AuthResult(
-        ok: true,
-        message: 'Berhasil masuk dengan Google, ${profile.name}!',
-        user: profile,
-      );
+      return await _completeSignIn(user, provider: 'google');
     } on GoogleSignInException catch (e) {
       if (e.code == GoogleSignInExceptionCode.canceled ||
           e.code == GoogleSignInExceptionCode.interrupted) {
@@ -254,7 +225,8 @@ class AuthService {
     } on FirebaseAuthException catch (e) {
       return AuthResult(ok: false, message: _mapGoogleError(e));
     } catch (e) {
-      return AuthResult(ok: false, message: 'Login Google gagal. $e');
+      await _safeSignOut();
+      return AuthResult(ok: false, message: profileErrorMessage(e));
     }
   }
 
@@ -269,13 +241,16 @@ class AuthService {
     if (!isReady) return _notConfigured;
     final user = _auth.currentUser;
     if (user == null || user.isAnonymous) {
-      return const AuthResult(ok: false, message: 'Masuk akun terlebih dahulu.');
+      return const AuthResult(
+          ok: false, message: 'Masuk akun terlebih dahulu.');
     }
 
     try {
       final updates = <String, dynamic>{};
 
-      if (name != null && name.trim().isNotEmpty && name.trim() != user.displayName) {
+      if (name != null &&
+          name.trim().isNotEmpty &&
+          name.trim() != user.displayName) {
         final trimmed = name.trim();
         updates['name'] = trimmed;
         try {
@@ -285,7 +260,9 @@ class AuthService {
         }
       }
 
-      if (email != null && email.trim().isNotEmpty && email.trim() != user.email) {
+      if (email != null &&
+          email.trim().isNotEmpty &&
+          email.trim() != user.email) {
         final trimmed = email.trim();
         updates['email'] = trimmed;
         try {
@@ -301,30 +278,58 @@ class AuthService {
 
       if (updates.isEmpty) {
         final profile = await _loadProfile(user);
-        return AuthResult(ok: true, message: 'Tidak ada perubahan.', user: profile);
+        return AuthResult(
+            ok: true, message: 'Tidak ada perubahan.', user: profile);
       }
 
       updates['updatedAt'] = FieldValue.serverTimestamp();
       await _users.doc(user.uid).set(updates, SetOptions(merge: true));
 
       final profile = await _loadProfile(user);
-      return AuthResult(ok: true, message: 'Profil berhasil disimpan.', user: profile);
+      return AuthResult(
+          ok: true, message: 'Profil berhasil disimpan.', user: profile);
     } catch (e) {
-      return AuthResult(ok: false, message: 'Gagal menyimpan profil. $e');
+      return AuthResult(ok: false, message: profileErrorMessage(e));
     }
   }
 
   // ───────────────────────── INTERNAL ─────────────────────────
 
-  /// Ambil (atau buat bila belum ada) dokumen profil `users/{uid}`.
-  /// Mengembalikan null untuk sesi anonim.
-  static Future<AppUser?> _loadProfile(
+  /// Semua metode login melewati pemeriksaan status yang sama dan gagal tertutup.
+  static Future<AuthResult> _completeSignIn(User user,
+      {String? provider}) async {
+    try {
+      final profile = await _loadProfile(user, provider: provider);
+      if (!profile.isActive) {
+        await _safeSignOut();
+        return AuthResult(ok: false, message: profile.accessDeniedMessage);
+      }
+      return AuthResult(
+          ok: true, message: 'Selamat datang, ${profile.name}!', user: profile);
+    } catch (e) {
+      await _safeSignOut();
+      return AuthResult(ok: false, message: profileErrorMessage(e));
+    }
+  }
+
+  static String profileErrorMessage(Object e) {
+    if (e is FirebaseException && e.code == 'permission-denied') {
+      return 'Akses profil ditolak. Silakan masuk kembali atau hubungi admin.';
+    }
+    return 'Profil belum dapat diverifikasi. Periksa koneksi lalu masuk kembali.';
+  }
+
+  static Stream<AppUser?> watchProfile(String uid) =>
+      _users.doc(uid).snapshots().map(
+            (doc) =>
+                doc.exists ? AppUser.fromFirestore(doc.id, doc.data()!) : null,
+          );
+
+  /// Ambil (atau buat bila belum ada) dokumen profil `users/{uid}` dari server.
+  static Future<AppUser> _loadProfile(
     User user, {
     String? provider,
-    bool createIfMissing = true,
   }) async {
-    if (user.isAnonymous) return null;
-
     final fallback = AppUser.fromAuth(
       user.uid,
       name: user.displayName ?? user.email?.split('@').first ?? 'Pengguna',
@@ -333,48 +338,19 @@ class AuthService {
       provider: provider ?? 'password',
     );
 
-    if (!isReady) return fallback;
-
-    try {
-      final snap = await _users
-          .doc(user.uid)
-          .get()
-          .timeout(const Duration(seconds: 6));
-      if (snap.exists) return AppUser.fromFirestore(user.uid, snap.data()!);
-      if (!createIfMissing) return fallback;
-      await _saveProfile(fallback);
-      return fallback;
-    } catch (_) {
-      // Firestore tak terjangkau: pakai data dari akun Auth saja.
-      return fallback;
-    }
+    final snap = await _users
+        .doc(user.uid)
+        .get(const GetOptions(source: Source.server))
+        .timeout(const Duration(seconds: 6));
+    if (snap.exists) return AppUser.fromFirestore(user.uid, snap.data()!);
+    await _saveProfile(fallback);
+    return fallback;
   }
 
-  static Future<void> _saveProfile(AppUser profile) async {
-    try {
-      await _users.doc(profile.uid).set(profile.toFirestore());
-    } catch (_) {
-      // biarkan — profil akan dibuat ulang pada kunjungan berikutnya
-    }
-  }
-
-  /// Hapus profil "undangan" yang dibuat admin untuk email ini.
-  static Future<void> _claimPendingProfile(String email) async {
-    try {
-      final snap = await _users
-          .where('email', isEqualTo: email)
-          .limit(20)
-          .get()
-          .timeout(const Duration(seconds: 6));
-      for (final doc in snap.docs) {
-        if (doc.data()['pending'] == true) {
-          await doc.reference.delete();
-        }
-      }
-    } catch (_) {
-      // diabaikan
-    }
-  }
+  static Future<void> _saveProfile(AppUser profile) => _users
+      .doc(profile.uid)
+      .set(profile.toFirestore())
+      .timeout(const Duration(seconds: 8));
 
   /// Pesan kesalahan khusus login Google (konteksnya berbeda dengan email,
   /// mis. `invalid-credential` bukan berarti kata sandi salah).

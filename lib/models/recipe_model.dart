@@ -13,7 +13,8 @@ class Ingredient {
     required this.amount,
   });
 
-  factory Ingredient.fromFirestore(Map<String, dynamic> row, {String fallbackId = ''}) {
+  factory Ingredient.fromFirestore(Map<String, dynamic> row,
+      {String fallbackId = ''}) {
     return Ingredient(
       id: row['id']?.toString() ?? fallbackId,
       name: (row['name'] ?? '') as String,
@@ -41,7 +42,8 @@ class CookingStep {
     required this.description,
   });
 
-  factory CookingStep.fromFirestore(Map<String, dynamic> row, {String fallbackId = ''}) {
+  factory CookingStep.fromFirestore(Map<String, dynamic> row,
+      {String fallbackId = ''}) {
     return CookingStep(
       id: row['id']?.toString() ?? fallbackId,
       title: (row['title'] ?? '') as String,
@@ -121,8 +123,9 @@ class Recipe {
         data['likesCount'] is num ? (data['likesCount'] as num).toInt() : 0;
     final recooksCount =
         data['recooksCount'] is num ? (data['recooksCount'] as num).toInt() : 0;
-    final reportedCount =
-        data['reportedCount'] is num ? (data['reportedCount'] as num).toInt() : null;
+    final reportedCount = data['reportedCount'] is num
+        ? (data['reportedCount'] as num).toInt()
+        : null;
     final category = (data['category'] ?? '') as String;
 
     final rawIngredients = (data['ingredients'] as List?) ?? const [];
@@ -250,7 +253,7 @@ class AdminUser {
   final String name;
   final String email;
   final String avatar;
-  String status; // 'Aktif', 'Ditangguhkan', 'Baru'
+  String status; // 'Aktif', 'Ditangguhkan', 'Diblokir', 'Baru'
   final String role; // 'Kreator', 'Pengguna', 'Admin'
   final String registeredDate;
 
@@ -273,7 +276,7 @@ class AdminUser {
       name: user.name,
       email: user.email,
       avatar: user.avatar ?? '',
-      status: user.isPending ? 'Baru' : user.statusLabel,
+      status: user.isPending && user.isActive ? 'Baru' : user.statusLabel,
       role: user.roleLabel,
       registeredDate: user.createdAt != null
           ? AdminUser._formatDate(user.createdAt!)
@@ -283,8 +286,18 @@ class AdminUser {
 
   static String _formatDate(DateTime dt) {
     const bulan = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
-      'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'Mei',
+      'Jun',
+      'Jul',
+      'Agu',
+      'Sep',
+      'Okt',
+      'Nov',
+      'Des'
     ];
     return '${dt.day} ${bulan[dt.month - 1]} ${dt.year}';
   }
@@ -361,10 +374,22 @@ class MockData {
         isMyRecipe: true,
         publishedAgo: '2 hari lalu',
         ingredients: [
-          Ingredient(id: '1', name: 'Beras Bulir Panjang & Santan Kental', amount: '350g beras + 200ml santan'),
-          Ingredient(id: '2', name: 'Ikan Bilis / Teri Medan & Kacang Tanah', amount: '100 gram'),
-          Ingredient(id: '3', name: 'Daun Pandan, Serai & Jahe Geprek', amount: '3 lbr pandan + 2 serai'),
-          Ingredient(id: '4', name: 'Sambal Tumis Bawang & Cabai Kering', amount: '150 gram'),
+          Ingredient(
+              id: '1',
+              name: 'Beras Bulir Panjang & Santan Kental',
+              amount: '350g beras + 200ml santan'),
+          Ingredient(
+              id: '2',
+              name: 'Ikan Bilis / Teri Medan & Kacang Tanah',
+              amount: '100 gram'),
+          Ingredient(
+              id: '3',
+              name: 'Daun Pandan, Serai & Jahe Geprek',
+              amount: '3 lbr pandan + 2 serai'),
+          Ingredient(
+              id: '4',
+              name: 'Sambal Tumis Bawang & Cabai Kering',
+              amount: '150 gram'),
         ],
         steps: [
           CookingStep(
@@ -403,9 +428,18 @@ class MockData {
         isMyRecipe: true,
         publishedAgo: '1 minggu lalu',
         ingredients: [
-          Ingredient(id: '1', name: 'Nasi Jepang Hangat & Nori Bubuk', amount: '300 gram'),
-          Ingredient(id: '2', name: 'Paha Ayam Fillet (Marinasi Soy Sauce)', amount: '250 gram'),
-          Ingredient(id: '3', name: 'Mayones Jepang, Tobiko & Saus Sambal', amount: '5 sdm mayo + 2 sdm tobiko'),
+          Ingredient(
+              id: '1',
+              name: 'Nasi Jepang Hangat & Nori Bubuk',
+              amount: '300 gram'),
+          Ingredient(
+              id: '2',
+              name: 'Paha Ayam Fillet (Marinasi Soy Sauce)',
+              amount: '250 gram'),
+          Ingredient(
+              id: '3',
+              name: 'Mayones Jepang, Tobiko & Saus Sambal',
+              amount: '5 sdm mayo + 2 sdm tobiko'),
         ],
         steps: [
           CookingStep(
@@ -443,9 +477,18 @@ class MockData {
         isFavorite: false,
         publishedAgo: '3 hari lalu',
         ingredients: [
-          Ingredient(id: '1', name: 'Salmon Sashimi Grade (Potong Dadu)', amount: '200 gram'),
-          Ingredient(id: '2', name: 'Alpukat Mentega, Edamame & Wakame', amount: '1 buah alpukat + 50g edamame'),
-          Ingredient(id: '3', name: 'Saus Shoyu, Minyak Wijen & Biji Wijen', amount: '3 sdm'),
+          Ingredient(
+              id: '1',
+              name: 'Salmon Sashimi Grade (Potong Dadu)',
+              amount: '200 gram'),
+          Ingredient(
+              id: '2',
+              name: 'Alpukat Mentega, Edamame & Wakame',
+              amount: '1 buah alpukat + 50g edamame'),
+          Ingredient(
+              id: '3',
+              name: 'Saus Shoyu, Minyak Wijen & Biji Wijen',
+              amount: '3 sdm'),
         ],
         steps: [
           CookingStep(
@@ -483,20 +526,31 @@ class MockData {
         isFavorite: true,
         publishedAgo: '5 hari lalu',
         ingredients: [
-          Ingredient(id: '1', name: 'Daging Sapi Sengkel / Chuck (Potong Dadu)', amount: '400 gram'),
-          Ingredient(id: '2', name: 'Blok Roux Kari Jepang & Kentang', amount: '100g roux + 2 kentang'),
-          Ingredient(id: '3', name: 'Bawang Bombay Karamel & Apel Parut', amount: '2 bombay + 1/2 apel'),
+          Ingredient(
+              id: '1',
+              name: 'Daging Sapi Sengkel / Chuck (Potong Dadu)',
+              amount: '400 gram'),
+          Ingredient(
+              id: '2',
+              name: 'Blok Roux Kari Jepang & Kentang',
+              amount: '100g roux + 2 kentang'),
+          Ingredient(
+              id: '3',
+              name: 'Bawang Bombay Karamel & Apel Parut',
+              amount: '2 bombay + 1/2 apel'),
         ],
         steps: [
           CookingStep(
             id: '1',
             title: 'Menumis Bombay & Sapi',
-            description: 'Tumis bawang bombay hingga harum kecokelatan, masukkan daging sapi, rebus hingga empuk.',
+            description:
+                'Tumis bawang bombay hingga harum kecokelatan, masukkan daging sapi, rebus hingga empuk.',
           ),
           CookingStep(
             id: '2',
             title: 'Memasukkan Blok Kari',
-            description: 'Masukkan wortel dan kentang lunak, larutkan blok kari Jepang, masak hingga mengental harum.',
+            description:
+                'Masukkan wortel dan kentang lunak, larutkan blok kari Jepang, masak hingga mengental harum.',
           ),
         ],
       ),
@@ -521,20 +575,31 @@ class MockData {
         isFavorite: true,
         publishedAgo: '4 hari lalu',
         ingredients: [
-          Ingredient(id: '1', name: 'Pasta Tagliatelle / Fettuccine', amount: '220 gram'),
-          Ingredient(id: '2', name: 'Heavy Cream, Jamur Champignon & Truffle', amount: '200ml krim + 1 sdm truffle'),
-          Ingredient(id: '3', name: 'Keju Parmesan Parut & Bawang Putih', amount: '50 gram'),
+          Ingredient(
+              id: '1',
+              name: 'Pasta Tagliatelle / Fettuccine',
+              amount: '220 gram'),
+          Ingredient(
+              id: '2',
+              name: 'Heavy Cream, Jamur Champignon & Truffle',
+              amount: '200ml krim + 1 sdm truffle'),
+          Ingredient(
+              id: '3',
+              name: 'Keju Parmesan Parut & Bawang Putih',
+              amount: '50 gram'),
         ],
         steps: [
           CookingStep(
             id: '1',
             title: 'Rebus Pasta Al Dente',
-            description: 'Rebus pasta dalam air mendidih bergaram. Sisihkan 100 ml air pasta.',
+            description:
+                'Rebus pasta dalam air mendidih bergaram. Sisihkan 100 ml air pasta.',
           ),
           CookingStep(
             id: '2',
             title: 'Saus Krim Truffle',
-            description: 'Tumis jamur dengan butter dan bawang putih, tuang cream dan truffle paste, aduk rata bersama pasta.',
+            description:
+                'Tumis jamur dengan butter dan bawang putih, tuang cream dan truffle paste, aduk rata bersama pasta.',
           ),
         ],
       ),
@@ -559,20 +624,31 @@ class MockData {
         isFavorite: false,
         publishedAgo: '3 hari lalu',
         ingredients: [
-          Ingredient(id: '1', name: 'Paha & Dada Ayam Negeri', amount: '800 gram (4 potong)'),
-          Ingredient(id: '2', name: 'Madu Murni, Kecap Manis & Sambal', amount: '4 sdm madu + 3 sdm kecap'),
-          Ingredient(id: '3', name: 'Bumbu Halus (Bawang, Kemiri, Cabai)', amount: '150 gram'),
+          Ingredient(
+              id: '1',
+              name: 'Paha & Dada Ayam Negeri',
+              amount: '800 gram (4 potong)'),
+          Ingredient(
+              id: '2',
+              name: 'Madu Murni, Kecap Manis & Sambal',
+              amount: '4 sdm madu + 3 sdm kecap'),
+          Ingredient(
+              id: '3',
+              name: 'Bumbu Halus (Bawang, Kemiri, Cabai)',
+              amount: '150 gram'),
         ],
         steps: [
           CookingStep(
             id: '1',
             title: 'Ungkep Ayam Bumbu Rempah',
-            description: 'Tumis bumbu halus, masukkan ayam dan air kelapa, ungkep hingga bumbu meresap dan matang.',
+            description:
+                'Tumis bumbu halus, masukkan ayam dan air kelapa, ungkep hingga bumbu meresap dan matang.',
           ),
           CookingStep(
             id: '2',
             title: 'Bakar Olesan Madu',
-            description: 'Panggang ayam sambil diolesi racikan madu dan mentega hingga berkilau harum kecokelatan.',
+            description:
+                'Panggang ayam sambil diolesi racikan madu dan mentega hingga berkilau harum kecokelatan.',
           ),
         ],
       ),
@@ -594,24 +670,38 @@ class MockData {
         servings: '2-3 Porsi',
         difficulty: 'Sedang',
         image: MockImages.salmonMentaiHero,
-        secondaryImages: [MockImages.salmonMentaiSub1, MockImages.salmonMentaiSub2],
+        secondaryImages: [
+          MockImages.salmonMentaiSub1,
+          MockImages.salmonMentaiSub2
+        ],
         isFavorite: true,
         publishedAgo: '1 hari lalu',
         ingredients: [
-          Ingredient(id: '1', name: 'Beras Jepang / Japonica Rice', amount: '300 gram'),
-          Ingredient(id: '2', name: 'Fillet Ikan Salmon Segar', amount: '200 gram (potong dadu)'),
-          Ingredient(id: '3', name: 'Mayones Kewpie & Tobiko', amount: '4 sdm mayo + 2 sdm tobiko'),
+          Ingredient(
+              id: '1',
+              name: 'Beras Jepang / Japonica Rice',
+              amount: '300 gram'),
+          Ingredient(
+              id: '2',
+              name: 'Fillet Ikan Salmon Segar',
+              amount: '200 gram (potong dadu)'),
+          Ingredient(
+              id: '3',
+              name: 'Mayones Kewpie & Tobiko',
+              amount: '4 sdm mayo + 2 sdm tobiko'),
         ],
         steps: [
           CookingStep(
             id: '1',
             title: 'Persiapan Nasi & Salmon',
-            description: 'Aduk nasi pulen hangat dengan furikake dan minyak wijen. Marinasi salmon dengan soy sauce.',
+            description:
+                'Aduk nasi pulen hangat dengan furikake dan minyak wijen. Marinasi salmon dengan soy sauce.',
           ),
           CookingStep(
             id: '2',
             title: 'Torch Saus Mentai',
-            description: 'Tata salmon di atas nasi, lapisi saus mentai tebal, torch hingga smoky kecokelatan.',
+            description:
+                'Tata salmon di atas nasi, lapisi saus mentai tebal, torch hingga smoky kecokelatan.',
           ),
         ],
       ),
@@ -637,20 +727,31 @@ class MockData {
         isMyRecipe: true,
         publishedAgo: '5 hari lalu',
         ingredients: [
-          Ingredient(id: '1', name: 'Tepung Protein Tinggi & Air Hangat', amount: '300g tepung + 190ml air'),
-          Ingredient(id: '2', name: 'Mozzarella & Beef Pepperoni', amount: '180g keju + 80g pepperoni'),
-          Ingredient(id: '3', name: 'Saus Tomat San Marzano & Basil', amount: '5 sdm saus'),
+          Ingredient(
+              id: '1',
+              name: 'Tepung Protein Tinggi & Air Hangat',
+              amount: '300g tepung + 190ml air'),
+          Ingredient(
+              id: '2',
+              name: 'Mozzarella & Beef Pepperoni',
+              amount: '180g keju + 80g pepperoni'),
+          Ingredient(
+              id: '3',
+              name: 'Saus Tomat San Marzano & Basil',
+              amount: '5 sdm saus'),
         ],
         steps: [
           CookingStep(
             id: '1',
             title: 'Membentuk Adonan Pizza',
-            description: 'Pipihkan adonan menggunakan jari dari tengah ke tepi agar pinggiran renyah berongga.',
+            description:
+                'Pipihkan adonan menggunakan jari dari tengah ke tepi agar pinggiran renyah berongga.',
           ),
           CookingStep(
             id: '2',
             title: 'Topping & Panggang Oven',
-            description: 'Oles saus tomat, tabur keju dan pepperoni. Panggang suhu 250°C selama 10-12 menit.',
+            description:
+                'Oles saus tomat, tabur keju dan pepperoni. Panggang suhu 250°C selama 10-12 menit.',
           ),
         ],
       ),
@@ -675,20 +776,28 @@ class MockData {
         isFavorite: false,
         publishedAgo: '4 hari lalu',
         ingredients: [
-          Ingredient(id: '1', name: 'Daging Paha Ayam Giling & Udang', amount: '300g ayam + 150g udang'),
+          Ingredient(
+              id: '1',
+              name: 'Daging Paha Ayam Giling & Udang',
+              amount: '300g ayam + 150g udang'),
           Ingredient(id: '2', name: 'Kulit Dimsum Tipis', amount: '16 lembar'),
-          Ingredient(id: '3', name: 'Tapioka, Minyak Wijen & Saus Tiram', amount: '3 sdm tapioka + 2 sdm bumbu'),
+          Ingredient(
+              id: '3',
+              name: 'Tapioka, Minyak Wijen & Saus Tiram',
+              amount: '3 sdm tapioka + 2 sdm bumbu'),
         ],
         steps: [
           CookingStep(
             id: '1',
             title: 'Mencampur Adonan Isian',
-            description: 'Aduk rata ayam, udang, bawang putih, minyak wijen, putih telur, dan tapioka hingga kalis lengket.',
+            description:
+                'Aduk rata ayam, udang, bawang putih, minyak wijen, putih telur, dan tapioka hingga kalis lengket.',
           ),
           CookingStep(
             id: '2',
             title: 'Membungkus & Mengukus',
-            description: 'Isi kulit dimsum, lipat bergelombang, beri wortel parut di atasnya. Kukus 20 menit.',
+            description:
+                'Isi kulit dimsum, lipat bergelombang, beri wortel parut di atasnya. Kukus 20 menit.',
           ),
         ],
       ),
@@ -714,19 +823,27 @@ class MockData {
         publishedAgo: 'Kemarin',
         ingredients: [
           Ingredient(id: '1', name: 'Spaghetti Bronze-Die', amount: '200 gram'),
-          Ingredient(id: '2', name: 'Kuning Telur & Keju Pecorino Romano', amount: '3 kuning telur + 60g keju'),
-          Ingredient(id: '3', name: 'Smoked Beef / Guanciale & Lada Hitam', amount: '100 gram'),
+          Ingredient(
+              id: '2',
+              name: 'Kuning Telur & Keju Pecorino Romano',
+              amount: '3 kuning telur + 60g keju'),
+          Ingredient(
+              id: '3',
+              name: 'Smoked Beef / Guanciale & Lada Hitam',
+              amount: '100 gram'),
         ],
         steps: [
           CookingStep(
             id: '1',
             title: 'Goreng Crispy Daging Asap',
-            description: 'Goreng smoked beef tanpa minyak hingga crispy. Kocok telur dan keju di mangkuk.',
+            description:
+                'Goreng smoked beef tanpa minyak hingga crispy. Kocok telur dan keju di mangkuk.',
           ),
           CookingStep(
             id: '2',
             title: 'Emulsi Carbonara Tanpa Api',
-            description: 'Matikan kompor wajan, masukkan pasta hangat, tuang kocokan telur keju sambil diaduk cepat.',
+            description:
+                'Matikan kompor wajan, masukkan pasta hangat, tuang kocokan telur keju sambil diaduk cepat.',
           ),
         ],
       ),
@@ -751,20 +868,31 @@ class MockData {
         isFavorite: false,
         publishedAgo: '4 hari lalu',
         ingredients: [
-          Ingredient(id: '1', name: 'Telur Ayam Segar (Pisah Kuning & Putih)', amount: '2 butir besar'),
-          Ingredient(id: '2', name: 'Tepung Terigu & Matcha Uji Organik', amount: '35g tepung + 1 sdm matcha'),
-          Ingredient(id: '3', name: 'Susu Cair Full Cream & Gula Pasir', amount: '25ml susu + 30g gula'),
+          Ingredient(
+              id: '1',
+              name: 'Telur Ayam Segar (Pisah Kuning & Putih)',
+              amount: '2 butir besar'),
+          Ingredient(
+              id: '2',
+              name: 'Tepung Terigu & Matcha Uji Organik',
+              amount: '35g tepung + 1 sdm matcha'),
+          Ingredient(
+              id: '3',
+              name: 'Susu Cair Full Cream & Gula Pasir',
+              amount: '25ml susu + 30g gula'),
         ],
         steps: [
           CookingStep(
             id: '1',
             title: 'Kocok Meringue Stiff Peak',
-            description: 'Kocok putih telur dan gula hingga kaku mengkilap. Lipat lembut ke adonan matcha.',
+            description:
+                'Kocok putih telur dan gula hingga kaku mengkilap. Lipat lembut ke adonan matcha.',
           ),
           CookingStep(
             id: '2',
             title: 'Panggang Pan Tutup',
-            description: 'Sendokkan adonan tinggi di wajan anti-lengket api kecil, tutup 4 menit per sisi hingga matang fluffy.',
+            description:
+                'Sendokkan adonan tinggi di wajan anti-lengket api kecil, tutup 4 menit per sisi hingga matang fluffy.',
           ),
         ],
       ),
