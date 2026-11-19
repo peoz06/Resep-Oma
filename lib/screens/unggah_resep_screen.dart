@@ -30,19 +30,13 @@ class UnggahResepScreen extends StatefulWidget {
 }
 
 class _UnggahResepScreenState extends State<UnggahResepScreen> {
-  final TextEditingController _titleController =
-      TextEditingController(text: 'Salmon Mentai Rice Bowl Spesial');
-  final TextEditingController _descController = TextEditingController(
-      text:
-          'Perpaduan salmon panggang juicy dengan saus mentai gurih-creamy yang ditorch hingga wangi smoky menggugah selera.');
-  final TextEditingController _timeController =
-      TextEditingController(text: '30 Menit');
-  final TextEditingController _servingsController =
-      TextEditingController(text: '2-3 Porsi');
-  final TextEditingController _difficultyController =
-      TextEditingController(text: 'Sedang');
+  final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _descController = TextEditingController();
+  final TextEditingController _timeController = TextEditingController();
+  final TextEditingController _servingsController = TextEditingController();
+  String? _difficulty;
 
-  String _selectedCategory = 'Asian Food';
+  String _selectedCategory = '';
   final List<String> _categories = [
     'Asian Food',
     'Western',
@@ -51,39 +45,12 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
     'Nusantara'
   ];
 
-  String _heroPhoto = MockImages.salmonMentaiHero;
-  List<String> _subPhotos = [
-    MockImages.salmonMentaiSub1,
-    MockImages.salmonMentaiSub2
-  ];
+  String _heroPhoto = '';
+  List<String> _subPhotos = [];
 
-  final List<Ingredient> _ingredients = [
-    Ingredient(
-        id: '1', name: 'Beras Jepang / Japonica Rice', amount: '300 gram'),
-    Ingredient(
-        id: '2',
-        name: 'Fillet Ikan Salmon Segar',
-        amount: '200 gram (potong dadu)'),
-    Ingredient(
-        id: '3',
-        name: 'Mayones Jepang (Kewpie) & Tobiko',
-        amount: '4 sdm mayo + 2 sdm tobiko'),
-  ];
+  final List<Ingredient> _ingredients = [];
 
-  final List<CookingStep> _steps = [
-    CookingStep(
-      id: '1',
-      title: 'Menyiapkan Nasi & Racikan Salmon',
-      description:
-          'Masak nasi Jepang hingga pulen hangat, campurkan dengan taburan furikake dan minyak wijen. Marinasi potongan salmon dengan kecap asin Jepang & saus tiram.',
-    ),
-    CookingStep(
-      id: '2',
-      title: 'Perakitan & Blow Torch Mentai',
-      description:
-          'Tata nasi dalam mangkuk tahan panas, susun salmon di atasnya, lapisi dengan saus mentai tebal. Gunakan kitchen blow torch hingga berkaramel wangi smoky.',
-    ),
-  ];
+  final List<CookingStep> _steps = [];
 
   bool _isPublishing = false;
 
@@ -96,7 +63,8 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
     _descController.text = recipe.description;
     _timeController.text = recipe.time;
     _servingsController.text = recipe.servings;
-    _difficultyController.text = recipe.difficulty;
+    _difficulty = const ['Mudah', 'Sedang', 'Sulit'].contains(recipe.difficulty)
+        ? recipe.difficulty : null;
     _selectedCategory = recipe.category;
     if (!_categories.contains(recipe.category)) {
       _categories.add(recipe.category);
@@ -327,6 +295,14 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
       widget.onShowToast?.call('Mohon isi nama resep terlebih dahulu');
       return;
     }
+    if (_selectedCategory.isEmpty || _timeController.text.trim().isEmpty ||
+        _servingsController.text.trim().isEmpty ||
+        (_difficulty == null && widget.recipe == null) ||
+        _ingredients.isEmpty || _steps.isEmpty || _heroPhoto.isEmpty) {
+      widget.onShowToast?.call(
+          'Lengkapi kategori, waktu, porsi, tingkat kesulitan, bahan, langkah, dan foto resep.');
+      return;
+    }
     if (widget.userId == null) {
       widget.onShowToast
           ?.call('Masuk akun terlebih dahulu untuk menerbitkan resep.');
@@ -374,7 +350,7 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
       category: _selectedCategory,
       cookTime: _timeController.text.trim(),
       servings: _servingsController.text.trim(),
-      difficulty: _difficultyController.text.trim(),
+      difficulty: _difficulty ?? widget.recipe?.difficulty ?? '',
       image: heroUrl,
       images: galleryUrls,
       ingredients: _ingredients
@@ -416,7 +392,6 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
     _descController.dispose();
     _timeController.dispose();
     _servingsController.dispose();
-    _difficultyController.dispose();
     super.dispose();
   }
 
@@ -775,8 +750,34 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
                   _buildMetricInput('Porsi', Icons.group, AppColors.tertiary,
                       _servingsController),
                   const SizedBox(width: 8),
-                  _buildMetricInput('Tingkat', Icons.equalizer,
-                      AppColors.primaryContainer, _difficultyController),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Column(
+                        children: [
+                          const Icon(Icons.equalizer, color: AppColors.primaryContainer, size: 20),
+                          const SizedBox(height: 4),
+                          const Text('Tingkat', style: TextStyle(color: AppColors.secondary, fontSize: 11)),
+                          DropdownButtonFormField<String>(
+                            initialValue: _difficulty,
+                            isExpanded: true,
+                            hint: Text(widget.recipe?.difficulty ?? 'Pilih',
+                                style: const TextStyle(fontSize: 12)),
+                            decoration: const InputDecoration(isDense: true, border: InputBorder.none,
+                                contentPadding: EdgeInsets.symmetric(vertical: 4), filled: false),
+                            items: const ['Mudah', 'Sedang', 'Sulit']
+                                .map((value) => DropdownMenuItem(value: value, child: Text(value,
+                                    style: const TextStyle(fontSize: 12)))).toList(),
+                            onChanged: (value) => setState(() => _difficulty = value),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ],

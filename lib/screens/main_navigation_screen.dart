@@ -46,7 +46,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   String _currentUserName = 'Tamu';
   String _currentUserEmail = 'guest@resepoma.id';
   String? _currentUserAvatar;
-  String? _prefilledLoginEmail;
   bool _pendingUploadAfterLogin = false;
 
   bool _loadingRecipes = true;
@@ -104,7 +103,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     _currentUserEmail = user.email;
     _currentUserName = user.name.trim().isEmpty ? 'Pengguna' : user.name.trim();
     _currentUserAvatar = user.avatar;
-    _prefilledLoginEmail = user.email;
   }
 
   void _resetGuestState() {
@@ -325,6 +323,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   Future<void> _handleLogout({String? message}) async {
     if (_loggingOut || !mounted) return;
     _loggingOut = true;
+    try {
+      await AuthService.signOut();
+    } catch (_) {
+      _loggingOut = false;
+      _showToast('Gagal keluar dari akun. Silakan coba lagi.');
+      return;
+    }
+    if (!mounted) return;
     final subscription = _profileSubscription;
     _profileSubscription = null;
     Navigator.of(context).popUntil((route) => route.isFirst);
@@ -340,8 +346,28 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     _showToast(
         message ?? 'Anda telah keluar. Sekarang menjelajah sebagai Tamu.');
     await subscription?.cancel();
-    await AuthService.signOut();
     _loggingOut = false;
+  }
+
+  Future<void> _confirmLogout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Keluar dari akun?'),
+        content: const Text('Apakah Anda yakin ingin logout?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) await _handleLogout();
   }
 
   void _toggleFavorite(String id) async {
@@ -435,7 +461,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     if (_currentMode == AppMode.auth) {
       currentScreenWidget = _authScreen == 'login'
           ? LoginScreen(
-              initialEmail: _prefilledLoginEmail,
               onLoginSuccess: _handleLoginSuccess,
               onNavigateToRegister: () =>
                   setState(() => _authScreen = 'register'),
@@ -470,7 +495,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           }),
           darkMode: widget.darkMode,
           onToggleDarkMode: widget.onToggleDarkMode,
-          onLogoutAdmin: () => setState(() => _currentMode = AppMode.user),
+          onLogoutAdmin: _confirmLogout,
           onShowToast: _showToast,
         );
       }
@@ -517,6 +542,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           currentScreenWidget = ProfilScreen(
             recipes: _recipes,
             isLoggedIn: _isLoggedIn,
+            isAdmin: _currentUserRole == 'admin',
             userId: _currentUserId,
             userName: _currentUserName,
             userEmail: _currentUserEmail,
@@ -547,13 +573,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               });
               _loadRecipes();
             },
-            onLogout: _handleLogout,
+            onLogout: _confirmLogout,
             onUpdateProfile: (name, email, updated) {
               setState(() {
                 if (updated != null) _applyUser(updated);
                 _currentUserName = name;
                 _currentUserEmail = email;
-                _prefilledLoginEmail = email;
               });
             },
             onLogin: () => setState(() {

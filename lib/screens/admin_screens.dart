@@ -987,34 +987,6 @@ class AdminSettingsScreen extends StatefulWidget {
 }
 
 class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
-  void _changePasswordDialog() {
-    final passCtrl = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title:
-            const Text('Ubah Kata Sandi Admin', style: TextStyle(fontSize: 16)),
-        content: TextField(
-          controller: passCtrl,
-          obscureText: true,
-          decoration: const InputDecoration(labelText: 'Kata Sandi Baru'),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Batal')),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              widget.onShowToast?.call('Kata sandi Admin berhasil diperbarui!');
-            },
-            child: const Text('Simpan'),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return ListView(
@@ -1081,9 +1053,9 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
           child: Material(
             color: Colors.transparent,
             child: ListTile(
-              onTap: _changePasswordDialog,
+              onTap: widget.onEditProfile,
               leading: const Icon(Icons.lock_reset, color: AppColors.primary),
-              title: const Text('Ubah Kata Sandi Admin',
+              title: const Text('Ubah Kata Sandi di Profil',
                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
               trailing: const Icon(Icons.chevron_right, size: 20),
             ),

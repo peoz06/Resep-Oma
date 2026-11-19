@@ -9,6 +9,28 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('Login mulai kosong dan Ingat Saya tidak tercentang',
+      (tester) async {
+    String? message;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: LoginScreen(
+          onLoginSuccess: (_) {},
+          onNavigateToRegister: () {},
+          onShowToast: (text) => message = text,
+        ),
+      ),
+    ));
+    expect(tester.widgetList<TextField>(find.byType(TextField))
+        .map((field) => field.controller?.text), everyElement(isEmpty));
+    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isFalse);
+    await tester.tap(find.text('Masuk Sekarang'));
+    expect(message, contains('email'));
+    await tester.tap(find.byType(Checkbox));
+    await tester.pump();
+    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isTrue);
+  });
+
   test('Status akun lama, suspended, banned, dan tidak valid dibedakan', () {
     expect(AppUser.fromFirestore('legacy', {}).isActive, isTrue);
     for (final status in ['suspended', 'banned', 'baru', '', null]) {

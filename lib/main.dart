@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'screens/main_navigation_screen.dart';
 import 'services/firebase_service.dart';
 import 'services/supabase_service.dart';
@@ -31,6 +32,14 @@ class _DapurKitaAppState extends State<DapurKitaApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      scrollBehavior: const MaterialScrollBehavior().copyWith(
+        dragDevices: {
+          PointerDeviceKind.touch,
+          PointerDeviceKind.mouse,
+          PointerDeviceKind.stylus,
+          PointerDeviceKind.trackpad,
+        },
+      ),
       title: 'Resep Oma — Komunitas Resep & Kuliner',
       debugShowCheckedModeBanner: false,
       themeMode: _darkMode ? ThemeMode.dark : ThemeMode.light,

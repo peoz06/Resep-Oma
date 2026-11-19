@@ -17,6 +17,7 @@ class ProfilScreen extends StatefulWidget {
   final VoidCallback onLogout;
   final VoidCallback onLogin;
   final bool isLoggedIn;
+  final bool isAdmin;
   final String? userId;
   final String userName;
   final String userEmail;
@@ -39,6 +40,7 @@ class ProfilScreen extends StatefulWidget {
     required this.onLogout,
     required this.onLogin,
     this.isLoggedIn = false,
+    this.isAdmin = false,
     this.userId,
     this.userName = 'Tamu',
     this.userEmail = 'guest@resepoma.id',
@@ -127,7 +129,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: const Text('Edit Profil', style: TextStyle(fontSize: 16)),
-          content: Column(
+          content: SingleChildScrollView(child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
@@ -141,8 +143,16 @@ class _ProfilScreenState extends State<ProfilScreen> {
               TextField(
                   controller: handleCtrl,
                   decoration: const InputDecoration(labelText: 'Username')),
+              if (widget.isLoggedIn)
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _changePasswordDialog();
+                  },
+                  child: const Text('Ubah Kata Sandi'),
+                ),
             ],
-          ),
+          )),
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(context),
@@ -210,6 +220,58 @@ class _ProfilScreenState extends State<ProfilScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _changePasswordDialog() async {
+    final oldCtrl = TextEditingController();
+    final newCtrl = TextEditingController();
+    final confirmCtrl = TextEditingController();
+    var saving = false;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Ubah Kata Sandi'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(controller: oldCtrl, obscureText: true,
+                    decoration: const InputDecoration(labelText: 'Kata sandi lama')),
+                TextField(controller: newCtrl, obscureText: true,
+                    decoration: const InputDecoration(labelText: 'Kata sandi baru')),
+                TextField(controller: confirmCtrl, obscureText: true,
+                    decoration: const InputDecoration(labelText: 'Konfirmasi kata sandi baru')),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: saving ? null : () => Navigator.pop(dialogContext),
+                child: const Text('Batal')),
+            ElevatedButton(
+              onPressed: saving ? null : () async {
+                if (newCtrl.text != confirmCtrl.text) {
+                  widget.onShowToast?.call('Konfirmasi kata sandi baru tidak sesuai.');
+                  return;
+                }
+                setDialogState(() => saving = true);
+                final res = await AuthService.changePassword(
+                  oldPassword: oldCtrl.text, newPassword: newCtrl.text,
+                );
+                if (!dialogContext.mounted) return;
+                setDialogState(() => saving = false);
+                widget.onShowToast?.call(res.message);
+                if (res.ok) Navigator.pop(dialogContext);
+              },
+              child: const Text('Simpan'),
+            ),
+          ],
+        ),
+      ),
+    );
+    oldCtrl.dispose();
+    newCtrl.dispose();
+    confirmCtrl.dispose();
   }
 
   @override
@@ -288,12 +350,13 @@ class _ProfilScreenState extends State<ProfilScreen> {
                 ],
               ),
             ),
-            IconButton(
-              onPressed: widget.onNavigateToAdmin,
-              icon: const Icon(Icons.settings, color: AppColors.onSurface),
-              style: IconButton.styleFrom(
-                  backgroundColor: AppColors.surfaceContainer),
-            ),
+            if (widget.isAdmin)
+              IconButton(
+                onPressed: widget.onNavigateToAdmin,
+                icon: const Icon(Icons.settings, color: AppColors.onSurface),
+                style: IconButton.styleFrom(
+                    backgroundColor: AppColors.surfaceContainer),
+              ),
           ],
         ),
         const SizedBox(height: 14),
@@ -639,12 +702,14 @@ class _ProfilScreenState extends State<ProfilScreen> {
                     label: 'Resep Favorit / Disimpan',
                     onTap: widget.onNavigateToFavorites,
                   ),
-                  const Divider(height: 1, indent: 56),
-                  _buildSettingTile(
-                    icon: Icons.manage_accounts,
-                    label: 'Pengaturan Akun & Panel Admin',
-                    onTap: widget.onNavigateToAdmin,
-                  ),
+                  if (widget.isAdmin) ...[
+                    const Divider(height: 1, indent: 56),
+                    _buildSettingTile(
+                      icon: Icons.manage_accounts,
+                      label: 'Pengaturan Akun & Panel Admin',
+                      onTap: widget.onNavigateToAdmin,
+                    ),
+                  ],
                   const Divider(height: 1, indent: 56),
                   _buildSettingTile(
                     icon: Icons.help_outline,

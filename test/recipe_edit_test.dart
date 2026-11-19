@@ -61,15 +61,10 @@ void main() {
         .widgetList<TextField>(find.byType(TextField))
         .map((field) => field.controller?.text)
         .toList();
-    expect(
-        values,
-        containsAll([
-          recipe.title,
-          recipe.description,
-          recipe.time,
-          recipe.servings,
-          recipe.difficulty
-        ]));
+    expect(values, containsAll([
+      recipe.title, recipe.description, recipe.time, recipe.servings,
+    ]));
+    expect(find.text(recipe.difficulty), findsWidgets);
     expect(find.text('Kategori Lama'), findsOneWidget);
     expect(find.text('Salmon Mentai Rice Bowl Spesial'), findsNothing);
 
@@ -115,9 +110,46 @@ void main() {
       )),
     ));
     expect(
-        tester
-            .widgetList<TextField>(find.byType(TextField))
+        tester.widgetList<TextField>(find.byType(TextField))
             .map((field) => field.controller?.text),
-        contains('Salmon Mentai Rice Bowl Spesial'));
+        everyElement(isEmpty));
+    expect(find.text('Salmon Mentai Rice Bowl Spesial'), findsNothing);
+    await tester.scrollUntilVisible(find.text('0 Bahan'), 250,
+        scrollable: find.byType(Scrollable).first);
+    expect(find.text('0 Bahan'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('0 Tahapan'), 250,
+        scrollable: find.byType(Scrollable).first);
+    expect(find.text('0 Tahapan'), findsOneWidget);
+  });
+
+  testWidgets('Form baru kosong, wajib lengkap, dan tingkat kesulitan dipilih',
+      (tester) async {
+    String? message;
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: UnggahResepScreen(
+      userId: 'user',
+      onPublishRecipe: () {},
+      onShowToast: (text) => message = text,
+    ))));
+    expect(tester.widgetList<TextField>(find.byType(TextField))
+        .map((field) => field.controller?.text), everyElement(isEmpty));
+    await tester.scrollUntilVisible(find.text('Terbitkan Resep Sekarang'), 250,
+        scrollable: find.byType(Scrollable).first);
+    await tester.tap(find.text('Terbitkan Resep Sekarang'));
+    expect(message, contains('nama resep'));
+
+    await tester.scrollUntilVisible(find.text('Nama Resep *'), -250,
+        scrollable: find.byType(Scrollable).first);
+    await tester.enterText(find.byType(TextField).first, 'Sup sederhana');
+    await tester.scrollUntilVisible(find.text('Tingkat'), 250,
+        scrollable: find.byType(Scrollable).first);
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    expect(find.text('Sulit').last, findsOneWidget);
+    await tester.tap(find.text('Sulit').last);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Terbitkan Resep Sekarang'), 250,
+        scrollable: find.byType(Scrollable).first);
+    await tester.tap(find.text('Terbitkan Resep Sekarang'));
+    expect(message, contains('Lengkapi kategori'));
   });
 }

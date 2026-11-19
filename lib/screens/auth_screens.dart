@@ -7,7 +7,6 @@ class LoginScreen extends StatefulWidget {
   final ValueChanged<AppUser> onLoginSuccess;
   final VoidCallback onNavigateToRegister;
   final VoidCallback? onBackToGuest;
-  final String? initialEmail;
   final ValueChanged<String>? onShowToast;
 
   const LoginScreen({
@@ -15,7 +14,6 @@ class LoginScreen extends StatefulWidget {
     required this.onLoginSuccess,
     required this.onNavigateToRegister,
     this.onBackToGuest,
-    this.initialEmail,
     this.onShowToast,
   });
 
@@ -24,26 +22,10 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  late final TextEditingController _emailCtrl;
-  final _passCtrl = TextEditingController(text: 'kuliner123');
+  final _emailCtrl = TextEditingController();
+  final _passCtrl = TextEditingController();
   bool _showPassword = false;
-  bool _rememberMe = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _emailCtrl = TextEditingController(
-      text: widget.initialEmail ?? 'anna.roberts@email.com',
-    );
-  }
-
-  @override
-  void didUpdateWidget(covariant LoginScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.initialEmail != null && widget.initialEmail != oldWidget.initialEmail) {
-      _emailCtrl.text = widget.initialEmail!;
-    }
-  }
+  bool _rememberMe = false;
 
   @override
   void dispose() {

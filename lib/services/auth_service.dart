@@ -89,7 +89,17 @@ class AuthService {
     }
   }
 
-  static Future<void> signOut() => _safeSignOut();
+  static Future<void> signOut() async {
+    if (!isReady) return;
+    await _auth.signOut();
+    if (_googleInitialized) {
+      try {
+        await GoogleSignIn.instance.signOut();
+      } catch (_) {
+        // Sesi Firebase sudah berakhir; kegagalan Google tidak mengembalikannya.
+      }
+    }
+  }
 
   // ───────────────────────── EMAIL / PASSWORD ─────────────────────────
 
@@ -160,6 +170,32 @@ class AuthService {
       return AuthResult(ok: false, message: _mapError(e));
     } catch (e) {
       return AuthResult(ok: false, message: 'Gagal mengirim email. $e');
+    }
+  }
+
+  static Future<AuthResult> changePassword({
+    required String oldPassword,
+    required String newPassword,
+  }) async {
+    if (!isReady) return _notConfigured;
+    final user = _auth.currentUser;
+    if (user == null || user.isAnonymous || user.email == null ||
+        !user.providerData.any((provider) => provider.providerId == 'password')) {
+      return const AuthResult(ok: false, message: 'Fitur ini hanya untuk akun email dan kata sandi.');
+    }
+    if (oldPassword.isEmpty || newPassword.length < 6) {
+      return const AuthResult(ok: false, message: 'Isi kata sandi lama dan kata sandi baru minimal 6 karakter.');
+    }
+    try {
+      await user.reauthenticateWithCredential(EmailAuthProvider.credential(
+        email: user.email!, password: oldPassword,
+      ));
+      await user.updatePassword(newPassword);
+      return const AuthResult(ok: true, message: 'Kata sandi berhasil diubah.');
+    } on FirebaseAuthException catch (e) {
+      return AuthResult(ok: false, message: _mapError(e));
+    } catch (_) {
+      return const AuthResult(ok: false, message: 'Gagal mengubah kata sandi. Coba lagi.');
     }
   }
 
