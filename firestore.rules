@@ -33,10 +33,24 @@ service cloud.firestore {
         && data.image is string && data.ingredients is list && data.steps is list;
     }
 
+    function counterChange(recipeId, kind, delta) {
+      let eventId = request.auth.uid + '__' + recipeId;
+      let eventPath = kind == 'likes'
+        ? /databases/$(database)/documents/likes/$(eventId)
+        : /databases/$(database)/documents/recooks/$(eventId);
+      return activeUser()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([kind == 'likes' ? 'likesCount' : 'recooksCount'])
+        && (kind == 'likes' ? request.resource.data.likesCount : request.resource.data.recooksCount)
+          == resource.data.get(kind == 'likes' ? 'likesCount' : 'recooksCount', 0) + delta
+        && (delta == 1 ? !exists(eventPath) && existsAfter(eventPath)
+          : exists(eventPath) && !existsAfter(eventPath));
+    }
+
     match /recipes/{recipeId} {
       allow read: if true;
       allow create: if activeUser()
         && request.resource.data.authorId == request.auth.uid
+        && request.resource.data.authorName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.name
         && publicRecipe(request.resource.data);
       allow update: if publicRecipe(request.resource.data) && (
         admin() || (
@@ -45,9 +59,40 @@ service cloud.firestore {
             'title', 'description', 'category', 'filterKey', 'cookTime', 'servings',
             'difficulty', 'image', 'images', 'ingredients', 'steps', 'updatedAt'
           ])
-        )
+        ) || counterChange(recipeId, 'likes', 1) || counterChange(recipeId, 'likes', -1)
+          || counterChange(recipeId, 'recooks', 1)
+          || (activeUser() && resource.data.authorId == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'authorName', 'authorAvatar', 'updatedAt'
+            ])
+            && request.resource.data.authorName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.name
+            && request.resource.data.get('authorAvatar', null)
+              == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('avatar', null))
       );
       allow delete: if admin() || (activeUser() && resource.data.authorId == request.auth.uid);
+
+      match /comments/{commentId} {
+        allow read: if exists(/databases/$(database)/documents/recipes/$(recipeId));
+        allow create: if activeUser()
+          && commentId == request.auth.uid + '__' + recipeId
+          && exists(/databases/$(database)/documents/recipes/$(recipeId))
+          && request.resource.data.keys().hasOnly(['authorId', 'authorName', 'text', 'rating', 'createdAt'])
+          && request.resource.data.authorId == request.auth.uid
+          && request.resource.data.authorName is string
+          && request.resource.data.authorName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.name
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 500
+          && request.resource.data.rating is int
+          && request.resource.data.rating >= 1 && request.resource.data.rating <= 5
+          && request.resource.data.createdAt == request.time;
+        allow update: if activeUser() && resource.data.authorId == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'rating'])
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 500
+          && request.resource.data.rating is int
+          && request.resource.data.rating >= 1 && request.resource.data.rating <= 5;
+        allow delete: if admin() || (activeUser() && resource.data.authorId == request.auth.uid);
+      }
     }
 
     match /users/{uid} {
@@ -94,9 +139,113 @@ service cloud.firestore {
       allow delete: if signedIn() && resource.data.uid == request.auth.uid;
     }
 
+    match /likes/{likeId} {
+      allow get: if signedIn() && (!exists(/databases/$(database)/documents/likes/$(likeId))
+        || resource.data.uid == request.auth.uid);
+      allow list: if signedIn() && resource.data.uid == request.auth.uid;
+      allow create: if activeUser()
+        && likeId == request.auth.uid + '__' + request.resource.data.recipeId
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'recipeId', 'createdAt'])
+        && request.resource.data.createdAt == request.time
+        && exists(/databases/$(database)/documents/recipes/$(request.resource.data.recipeId))
+        && getAfter(/databases/$(database)/documents/recipes/$(request.resource.data.recipeId)).data.likesCount
+          == get(/databases/$(database)/documents/recipes/$(request.resource.data.recipeId)).data.get('likesCount', 0) + 1;
+      allow delete: if activeUser() && resource.data.uid == request.auth.uid
+        && getAfter(/databases/$(database)/documents/recipes/$(resource.data.recipeId)).data.likesCount
+          == get(/databases/$(database)/documents/recipes/$(resource.data.recipeId)).data.likesCount - 1;
+    }
+
+    match /recooks/{recookId} {
+      allow get: if signedIn() && (!exists(/databases/$(database)/documents/recooks/$(recookId))
+        || resource.data.uid == request.auth.uid);
+      allow list: if signedIn() && resource.data.uid == request.auth.uid;
+      allow create: if activeUser()
+        && recookId == request.auth.uid + '__' + request.resource.data.recipeId
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'recipeId', 'createdAt'])
+        && request.resource.data.createdAt == request.time
+        && exists(/databases/$(database)/documents/recipes/$(request.resource.data.recipeId))
+        && getAfter(/databases/$(database)/documents/recipes/$(request.resource.data.recipeId)).data.recooksCount
+          == get(/databases/$(database)/documents/recipes/$(request.resource.data.recipeId)).data.get('recooksCount', 0) + 1;
+    }
+
+    match /follows/{followId} {
+      allow get: if signedIn() && (!exists(/databases/$(database)/documents/follows/$(followId))
+        || resource.data.followerId == request.auth.uid || resource.data.followingId == request.auth.uid);
+      allow list: if signedIn() && (resource.data.followerId == request.auth.uid
+        || resource.data.followingId == request.auth.uid);
+      allow create: if activeUser()
+        && request.resource.data.keys().hasOnly(['followerId', 'followingId', 'createdAt'])
+        && request.resource.data.followerId == request.auth.uid
+        && request.resource.data.followingId is string
+        && request.resource.data.followingId != request.auth.uid
+        && followId == request.auth.uid + '__' + request.resource.data.followingId
+        && request.resource.data.createdAt == request.time
+        && exists(/databases/$(database)/documents/users/$(request.resource.data.followingId))
+        && get(/databases/$(database)/documents/users/$(request.resource.data.followingId)).data.get('status', 'active') == 'active';
+      allow delete: if signedIn() && resource.data.followerId == request.auth.uid;
+    }
+
+    match /notifications/{notificationId} {
+      allow get: if signedIn() && (!exists(/databases/$(database)/documents/notifications/$(notificationId))
+        || resource.data.recipientId == request.auth.uid
+        || resource.data.actorId == request.auth.uid);
+      allow list: if signedIn() && resource.data.recipientId == request.auth.uid;
+      allow create: if activeUser()
+        && request.resource.data.keys().hasOnly([
+          'recipientId', 'actorId', 'recipeId', 'kind', 'eventId', 'title', 'seen', 'createdAt'
+        ])
+        && request.resource.data.actorId == request.auth.uid
+        && request.resource.data.recipientId != request.auth.uid
+        && request.resource.data.seen == false
+        && request.resource.data.createdAt == request.time
+        && exists(/databases/$(database)/documents/recipes/$(request.resource.data.recipeId))
+        && request.resource.data.recipientId == get(/databases/$(database)/documents/recipes/$(request.resource.data.recipeId)).data.authorId
+        && request.resource.data.title == get(/databases/$(database)/documents/recipes/$(request.resource.data.recipeId)).data.title
+        && (
+          (request.resource.data.kind == 'like'
+            && notificationId == 'like-' + request.auth.uid + '__' + request.resource.data.recipeId
+            && existsAfter(/databases/$(database)/documents/likes/$(request.auth.uid + '__' + request.resource.data.recipeId)))
+          || (request.resource.data.kind == 'recook'
+            && notificationId == 'recook-' + request.auth.uid + '__' + request.resource.data.recipeId
+            && existsAfter(/databases/$(database)/documents/recooks/$(request.auth.uid + '__' + request.resource.data.recipeId)))
+          || (request.resource.data.kind == 'comment'
+            && request.resource.data.eventId is string
+            && notificationId == 'comment-' + request.resource.data.eventId
+            && getAfter(/databases/$(database)/documents/recipes/$(request.resource.data.recipeId)/comments/$(request.resource.data.eventId)).data.authorId == request.auth.uid)
+        );
+      allow update: if signedIn() && resource.data.recipientId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['seen'])
+        && request.resource.data.seen == true;
+    }
+
+    match /drafts/{uid} {
+      allow get, list: if signedIn() && request.auth.uid == uid;
+      allow create, update: if activeUser() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly([
+          'uid', 'title', 'description', 'category', 'cookTime',
+          'servings', 'difficulty', 'ingredients', 'steps', 'updatedAt'
+        ])
+        && request.resource.data.uid == uid
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0 && request.resource.data.title.size() <= 60
+        && request.resource.data.description is string
+        && request.resource.data.category is string
+        && request.resource.data.cookTime is string
+        && request.resource.data.servings is string
+        && request.resource.data.difficulty is string
+        && request.resource.data.ingredients is list
+        && request.resource.data.steps is list
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if activeUser() && request.auth.uid == uid;
+    }
+
     match /reports/{reportId} {
-      allow create: if signedIn()
+      allow create: if activeUser()
         && request.resource.data.reporterId == request.auth.uid
+        && request.resource.data.get('reporterName', get(/databases/$(database)/documents/users/$(request.auth.uid)).data.name)
+          == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.name
         && request.resource.data.status == 'open'
         && request.resource.data.reason is string && request.resource.data.reason.size() > 0
         && request.resource.data.keys().hasOnly([

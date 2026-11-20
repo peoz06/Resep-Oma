@@ -10,6 +10,7 @@ class AdminRecipesScreen extends StatefulWidget {
   final ValueChanged<Recipe> onSelectRecipe;
   final VoidCallback onNavigateToUpload;
   final Future<void> Function(String) onDeleteRecipe;
+  final VoidCallback? onRefreshRecipes;
   final ValueChanged<String>? onShowToast;
 
   const AdminRecipesScreen({
@@ -18,6 +19,7 @@ class AdminRecipesScreen extends StatefulWidget {
     required this.onSelectRecipe,
     required this.onNavigateToUpload,
     required this.onDeleteRecipe,
+    this.onRefreshRecipes,
     this.onShowToast,
   });
 
@@ -88,10 +90,22 @@ class _AdminRecipesScreenState extends State<AdminRecipesScreen> {
       'image': recipe.image,
       'reported': _reportCounts[recipe.id] ?? 0,
       'popular': likes >= 200,
+      'verified': recipe.verified,
     };
   }
 
   Future<void> _deleteRecipeAdmin(Map<String, dynamic> item) async {
+    final confirmed = await showDialog<bool>(context: context,
+      builder: (dialog) => AlertDialog(
+        title: const Text('Hapus resep?'),
+        content: Text('"${item['title']}" akan dihapus permanen. Foto yang sudah diunggah tetap tersimpan.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialog, false), child: const Text('Batal')),
+          TextButton(onPressed: () => Navigator.pop(dialog, true), child: const Text('Hapus')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
     await widget.onDeleteRecipe(item['id'] as String);
     if (mounted) await _loadData();
   }
@@ -491,6 +505,19 @@ class _AdminRecipesScreenState extends State<AdminRecipesScreen> {
                               size: 20, color: AppColors.onSurfaceVariant),
                         ),
                         IconButton(
+                          tooltip: item['verified'] == true ? 'Cabut verifikasi' : 'Verifikasi resep',
+                          onPressed: () async {
+                            final result = await RecipeService.setRecipeVerified(
+                                item['id'] as String, item['verified'] != true);
+                            if (!mounted) return;
+                            widget.onShowToast?.call(result.message);
+                            if (result.ok) widget.onRefreshRecipes?.call();
+                          },
+                          icon: Icon(item['verified'] == true
+                              ? Icons.verified : Icons.verified_outlined,
+                              color: AppColors.primary),
+                        ),
+                        IconButton(
                           onPressed: () => _deleteRecipeAdmin(item),
                           icon: const Icon(Icons.delete_outline,
                               size: 20, color: AppColors.primary),
@@ -863,7 +890,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                                   ),
                                 ),
                                 OutlinedButton(
-                                  onPressed: () async {
+                                  onPressed: user.status == 'Baru' ? null : () async {
                                     final nextStatus = user.status == 'Aktif'
                                         ? 'suspended'
                                         : 'active';
@@ -903,8 +930,40 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                                     ),
                                   ),
                                 ),
+                                PopupMenuButton<String>(
+                                  enabled: user.status != 'Baru',
+                                  tooltip: 'Ubah role pengguna',
+                                  icon: const Icon(Icons.admin_panel_settings_outlined),
+                                  onSelected: (role) async {
+                                    if (role == 'admin') {
+                                      final confirmed = await showDialog<bool>(
+                                        context: context,
+                                        builder: (dialog) => AlertDialog(
+                                          title: const Text('Berikan akses admin?'),
+                                          content: Text('${user.name} akan bisa mengelola semua akun dan resep.'),
+                                          actions: [
+                                            TextButton(onPressed: () => Navigator.pop(dialog, false),
+                                                child: const Text('Batal')),
+                                            TextButton(onPressed: () => Navigator.pop(dialog, true),
+                                                child: const Text('Jadikan admin')),
+                                          ],
+                                        ),
+                                      );
+                                      if (confirmed != true) return;
+                                    }
+                                    final result = await RecipeService.setUserRole(user.id, role);
+                                    if (!mounted) return;
+                                    widget.onShowToast?.call(result.message);
+                                    if (result.ok) _loadUsers();
+                                  },
+                                  itemBuilder: (_) => const [
+                                    PopupMenuItem(value: 'user', child: Text('Pengguna')),
+                                    PopupMenuItem(value: 'creator', child: Text('Kreator')),
+                                    PopupMenuItem(value: 'admin', child: Text('Admin')),
+                                  ],
+                                ),
                                 IconButton(
-                                  onPressed: user.status == 'Diblokir'
+                                   onPressed: user.status == 'Diblokir' || user.status == 'Baru'
                                       ? null
                                       : () => _banUser(user),
                                   tooltip: 'Blokir pengguna',
@@ -1105,13 +1164,6 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
             padding: const EdgeInsets.symmetric(vertical: 14),
             shape:
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          ),
-        ),
-        const SizedBox(height: 12),
-        const Center(
-          child: Text(
-            'ID Sesi: ADM-9482-KUL-2024 • Terenkripsi End-to-End',
-            style: TextStyle(color: AppColors.outline, fontSize: 11),
           ),
         ),
       ],

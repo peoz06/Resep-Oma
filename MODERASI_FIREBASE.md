@@ -2,8 +2,8 @@
 
 Perubahan moderasi berlaku pada Flutter (`lib/`). Prototipe React (`src/`) tidak
 mengakses Firestore. Tidak menggunakan Cloud Functions. Pemilik project telah
-mengonfirmasi rules Firestore sudah live sesuai `firestore.rules` melalui
-Firebase Console. Agent tidak melakukan deploy atau verifikasi Console langsung.
+memublikasikan rules terbaru di Console; akses baca resep tanpa login dan
+penolakan baca profil tanpa login telah diuji. Agent tidak melakukan deploy.
 
 ## Koleksi, field, dan izin
 
@@ -13,16 +13,26 @@ Firebase Console. Agent tidak melakukan deploy atau verifikasi Console langsung.
 | `recipes/{id}` | `code`, `title`, `description`, `category`, `filterKey`, `cookTime`, `servings`, `difficulty`, `image`, `images`, `authorId`, `authorName`, `authorAvatar`, `likesCount`, `recooksCount`, `reportedCount`, `verified`, `status`, `ingredients[{name,amount}]`, `steps[{title,description}]`, `createdAt`, `updatedAt` |
 | `favorites/{uid__recipeId}` | `uid`, `recipeId`, `createdAt` |
 | `reports/{id}` | `recipeId`, `recipeTitle`, `reporterId`, `reporterName`, `reason`, `status`, `createdAt`, `resolvedAt` |
+| `likes/{uid__recipeId}` & `recooks/{uid__recipeId}` | `uid`, `recipeId`, `createdAt` (angka pada resep ditulis bersamaan dalam transaksi) |
+| `follows/{uid__followingId}` | `followerId`, `followingId`, `createdAt` |
+| `recipes/{id}/comments/{uid__recipeId}` | `authorId`, `authorName`, `text`, `rating`, `createdAt` |
+| `notifications/{id}` | `recipientId`, `actorId`, `recipeId`, `kind`, `title`, `seen`, `createdAt` |
+| `drafts/{uid}` | teks/form draf, tanpa foto lokal |
 
 | Koleksi | Tamu / Firebase Anonymous | Pengguna login | Admin aktif |
 |---|---|---|---|
 | `recipes` | read | create dengan authorId sendiri; update/delete milik sendiri jika aktif | create sendiri; read/update/delete semua |
 | `users` | ditolak | read sendiri; create sendiri sebagai user/active; update nama/email/avatar sendiri jika aktif | read semua; update pengguna lain termasuk role/status; create catatan pending; tanpa delete |
 | `favorites` | ditolak | read/create/update/delete sendiri | hanya milik sendiri |
-| `reports` | ditolak | create dengan reporterId sendiri dan status open | read/update/delete semua; create dengan reporterId sendiri |
+| `likes`, `recooks` | ditolak | read milik sendiri; suka bisa dibatalkan, recook sekali per resep | sama seperti pengguna; tidak bisa menambah angka sembarang |
+| `follows` | ditolak | ikuti akun aktif; lihat hubungan sendiri dan jumlah pengikut sendiri | sama seperti pengguna |
+| `comments` | read pada resep yang ada | tulis/ubah/hapus ulasan sendiri | read semua; hapus ulasan bermasalah |
+| `notifications` | ditolak | baca notifikasi sendiri; aktivitas valid dibuat bersama aksi resep | sama seperti pengguna |
+| `drafts` | ditolak | baca/tulis/hapus draf sendiri | sama seperti pengguna |
+| `reports` | ditolak | pengguna aktif membuat laporan dengan identitas sendiri | read/update/delete semua; create dengan identitas sendiri |
 | lainnya/subkoleksi | ditolak | ditolak | ditolak |
 
-`read` mencakup get dan query. Tidak ada koleksi lain ditemukan. Koleksi yang
+`read` mencakup get dan query. Koleksi yang
 tidak disebut ditolak secara default, tanpa `match /{document=**}`.
 Profil hanya dibaca pemilik/admin karena berisi email. Admin harus memiliki
 dokumen `users/{uid}` sendiri dengan `role:admin` dan status aktif.
@@ -60,7 +70,8 @@ harus menyasar dokumen dengan ID **UID Auth akun sebenarnya**, bukan ID pending.
 
 Resep sudah menyimpan `authorName` dan `authorAvatar`; layar resep tidak membaca
 `users` untuk nama/foto penulis. Payload resep tidak menyalin email atau profil
-privat. Rules membatasi field tingkat atas; `email`/`authorEmail` ditolak.
+privat. Perubahan nama/foto profil menyelaraskan resep lama milik pengguna.
+Rules membatasi field tingkat atas; `email`/`authorEmail` ditolak.
 
 **Sebelum membuka read publik, periksa data resep lama di cloud.** Rules tidak
 menyensor field yang sudah ada, teks bebas, isi nested, atau URL berisi data
@@ -75,10 +86,10 @@ Supabase tetap memakai upload anon sesuai konfigurasi sebelumnya. Rules Firestor
 tidak mengamankan API upload Supabase: akun banned masih dapat memanggil upload
 langsung jika policy Supabase mengizinkannya, tetapi tidak dapat menyimpan resep.
 
-## Status rules live dan pemeriksaan admin/data
+## Deploy rules terbaru dan pemeriksaan admin/data
 
-Rules sudah live berdasarkan konfirmasi pemilik project. Pemeriksaan data dan
-role berikut tetap diperlukan; status live bukan bukti seluruh alur telah diuji.
+Pemilik telah memublikasikan rules terbaru. Periksa data/role dan aturan
+produksi lainnya sebelum mencoba fitur baru.
 
 1. Tinjau semua role admin lama. Rules live sebelumnya memungkinkan pengguna
    menulis role sendiri; role yang tersimpan belum tentu tepercaya.
@@ -164,5 +175,5 @@ Playground tidak menguji login, navigasi, atau listener Flutter.
 7. Cabut role admin kedua lewat Console; panel adminnya harus tertutup.
 
 Belum diverifikasi langsung oleh agent: login email/Google nyata, logout otomatis
-Flutter dua sesi, data cloud lama, dan isi rules produksi. Status rules sudah live
-mengacu pada konfirmasi pemilik project, bukan pemeriksaan Console oleh agent.
+Flutter dua sesi, data cloud lama, dan seluruh isi rules produksi. Rules terbaru
+telah dipublikasikan menurut pemilik project.

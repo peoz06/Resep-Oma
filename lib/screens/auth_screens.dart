@@ -25,7 +25,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   bool _showPassword = false;
-  bool _rememberMe = false;
 
   @override
   void dispose() {
@@ -38,7 +37,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _submit() async {
     if (_emailCtrl.text.trim().isEmpty) {
-      widget.onShowToast?.call('Silakan masukkan email atau nama pengguna Anda.');
+      widget.onShowToast?.call('Silakan masukkan email Anda.');
       return;
     }
     if (_passCtrl.text.isEmpty) {
@@ -180,7 +179,7 @@ class _LoginScreenState extends State<LoginScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Email atau Nama Pengguna', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                   const Text('Email', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                   const SizedBox(height: 6),
                   TextField(
                     controller: _emailCtrl,
@@ -211,25 +210,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 10),
 
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          Checkbox(
-                            value: _rememberMe,
-                            activeColor: AppColors.primary,
-                            onChanged: (val) => setState(() => _rememberMe = val ?? false),
-                          ),
-                          const Text('Ingat Saya', style: TextStyle(color: AppColors.secondary, fontSize: 12)),
-                        ],
-                      ),
-                      TextButton(
-                        onPressed: _forgotPassword,
-                        child: const Text('Lupa Sandi?', style: TextStyle(color: AppColors.primary, fontSize: 12)),
-                      ),
-                    ],
-                  ),
+                   Align(alignment: Alignment.centerRight,
+                     child: TextButton(onPressed: _forgotPassword,
+                         child: const Text('Lupa Sandi?',
+                             style: TextStyle(color: AppColors.primary, fontSize: 12)))),
                   const SizedBox(height: 12),
 
                   ElevatedButton(

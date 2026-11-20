@@ -63,6 +63,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   late List<Recipe> _recipes;
   String? _toastMessage;
   bool _offlineMode = false;
+  String? _recipesError;
   StreamSubscription<AppUser?>? _profileSubscription;
   bool _loggingOut = false;
 
@@ -156,8 +157,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
     if (!FirebaseService.isReady) {
       setState(() {
-        _recipes = MockData.getInitialRecipes();
+        _recipes = MockData.getInitialRecipes()
+            .map((recipe) => recipe.copyWith(
+                isFavorite: false, isLiked: false, isMyRecipe: false))
+            .toList();
         _offlineMode = true;
+        _recipesError = null;
         _loadingRecipes = false;
       });
       _showToast(
@@ -166,20 +171,28 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     }
     final uid = _currentUserId;
     try {
-      final favIds =
-          uid == null ? <String>{} : await RecipeService.fetchFavoriteIds(uid);
+      final favDates = uid == null
+          ? <String, DateTime>{}
+          : await RecipeService.fetchFavoriteDates(uid);
+      final likedIds =
+          uid == null ? <String>{} : await RecipeService.fetchLikedIds(uid);
       final recipes = await RecipeService.fetchRecipes(
-          currentUid: uid, favoriteIds: favIds);
+          currentUid: uid, favoriteIds: favDates.keys.toSet(),
+          favoriteDates: favDates, likedIds: likedIds);
       if (!mounted || _loggingOut || uid != _currentUserId) return;
       setState(() {
         _recipes = recipes;
         _offlineMode = false;
+        _recipesError = null;
         _loadingRecipes = false;
       });
     } catch (e) {
       if (!mounted || _loggingOut || uid != _currentUserId) return;
-      setState(() => _loadingRecipes = false);
-      _showToast(RecipeService.errorMessage(e));
+      setState(() {
+        _loadingRecipes = false;
+        _recipesError = RecipeService.errorMessage(e);
+      });
+      _showToast(_recipesError!);
     }
   }
 
@@ -341,12 +354,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       _loadingRecipes = false;
       _recipes = _recipes
           .map((r) => r.copyWith(isFavorite: false, isMyRecipe: false))
+          .map((r) => r.copyWith(isLiked: false))
           .toList();
     });
     _showToast(
         message ?? 'Anda telah keluar. Sekarang menjelajah sebagai Tamu.');
     await subscription?.cancel();
     _loggingOut = false;
+    if (mounted) await _loadRecipes();
   }
 
   Future<void> _confirmLogout() async {
@@ -370,32 +385,35 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     if (confirmed == true && mounted) await _handleLogout();
   }
 
-  void _toggleFavorite(String id) async {
+  Future<bool?> _toggleFavorite(String id) async {
     final uid = _currentUserId;
     if (!_isLoggedIn || uid == null) {
       Navigator.of(context).popUntil((route) => route.isFirst);
       _showAuthRequiredSheet(forUpload: false);
-      return;
+      return null;
     }
 
     if (_offlineMode || !FirebaseService.isReady) {
       _showToast('Favorit hanya bisa disimpan untuk resep dari database.');
-      return;
+      return null;
     }
 
     final newState = await RecipeService.toggleFavorite(uid: uid, recipeId: id);
 
-    if (!mounted || _loggingOut || uid != _currentUserId) return;
+    if (!mounted || _loggingOut || uid != _currentUserId) return null;
 
     if (newState == null) {
       _showToast('Gagal memperbarui favorit. Periksa koneksi internet Anda.');
-      return;
+      return null;
     }
 
     setState(() {
       final idx = _recipes.indexWhere((r) => r.id == id);
       if (idx != -1) {
-        _recipes[idx].isFavorite = newState;
+        _recipes[idx] = _recipes[idx].copyWith(
+          isFavorite: newState,
+          favoritedAt: newState ? DateTime.now() : null,
+        );
       }
     });
     final idx = _recipes.indexWhere((r) => r.id == id);
@@ -403,6 +421,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     _showToast(newState
         ? '"$title" disimpan ke Favorit'
         : '"$title" dihapus dari Favorit');
+    return newState;
   }
 
   void _selectRecipe(Recipe recipe) {
@@ -413,6 +432,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       onShowToast: _showToast,
       currentUserId: _currentUserId,
       currentUserName: _currentUserName,
+      onRecipeChanged: _loadRecipes,
     );
   }
 
@@ -479,6 +499,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           recipes: _recipes,
           onSelectRecipe: _selectRecipe,
           onDeleteRecipe: _deleteRecipe,
+          onRefreshRecipes: _loadRecipes,
           onNavigateToUpload: _onTapUpload,
           onShowToast: _showToast,
         );
@@ -505,6 +526,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           currentScreenWidget = BerandaScreen(
             recipes: _recipes,
             userName: _currentUserName,
+            userId: _currentUserId,
             onSelectRecipe: _selectRecipe,
             onToggleFavorite: _toggleFavorite,
             onNavigateToExplore: () => setState(() => _userNavIndex = 1),
@@ -524,8 +546,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             recipe: _editingRecipe,
             onPublishRecipe: _publishRecipe,
             userId: _currentUserId,
-            userName: _currentUserName,
-            userAvatar: _currentUserAvatar,
             onShowToast: _showToast,
           );
           break;
@@ -547,6 +567,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             userName: _currentUserName,
             userEmail: _currentUserEmail,
             userAvatar: _currentUserAvatar,
+            darkMode: widget.darkMode,
+            onToggleDarkMode: widget.onToggleDarkMode,
             onSelectRecipe: _selectRecipe,
             onDeleteRecipe: _deleteRecipe,
             onEditRecipe: (recipe) {
@@ -611,7 +633,21 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                       ],
                     ),
                   )
-                : currentScreenWidget,
+                : _currentMode == AppMode.user &&
+                        (_userNavIndex == 0 || _userNavIndex == 1) &&
+                        _recipes.isEmpty && _recipesError != null
+                    ? Center(child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(_recipesError!, textAlign: TextAlign.center),
+                          const SizedBox(height: 12),
+                          ElevatedButton(
+                            onPressed: _loadRecipes,
+                            child: const Text('Coba muat resep lagi'),
+                          ),
+                        ],
+                      ))
+                    : currentScreenWidget,
           ),
 
           // Floating Toast

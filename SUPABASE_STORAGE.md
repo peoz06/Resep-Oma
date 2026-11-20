@@ -64,9 +64,10 @@ resep menyimpan URL hasil upload agar percobaan simpan ulang tidak mengunggah
 file yang sama. File lama setelah penggantian foto/penghapusan resep juga tetap
 ada; pembersihan dilakukan manual oleh pemilik project bila diperlukan.
 
-Keterbatasan yang belum diperbaiki: hindari mengganti akun saat upload avatar
-berjalan. Alur avatar belum mengikat penyimpanan setelah upload ke UID awal,
-sehingga pergantian akun dapat menyimpan hasil upload ke profil akun berikutnya.
+Upload avatar diikat ke UID awal: jika akun berganti saat upload, foto tidak
+dipasang ke akun baru. File yang terlanjur diunggah tetap perlu dibersihkan
+manual. Policy upload anon tidak bisa menjamin kepemilikan file di server;
+batasi akses bucket dengan backend tepercaya sebelum digunakan secara publik.
 
 ## Pemeriksaan
 

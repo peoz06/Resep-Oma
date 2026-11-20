@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 
 import 'package:dapurkita/main.dart';
 import 'package:dapurkita/screens/beranda_screen.dart';
-import 'package:dapurkita/screens/favorit_screen.dart';
 import 'package:dapurkita/screens/main_navigation_screen.dart';
 
 void main() {
@@ -74,19 +73,6 @@ void main() {
 
     await tester.tap(find.text('Favorit').last);
     await tester.pumpAndSettle();
-    final favoriteCategories = find.descendant(
-      of: find.byType(FavoritScreen),
-      matching: find.byWidgetPredicate((widget) => widget is SingleChildScrollView &&
-          widget.scrollDirection == Axis.horizontal),
-    ).first;
-    final favoritePosition = tester.state<ScrollableState>(find.descendant(
-      of: favoriteCategories, matching: find.byType(Scrollable),
-    )).position;
-    await tester.dragFrom(tester.getCenter(favoriteCategories),
-        const Offset(-170, 0), kind: PointerDeviceKind.mouse);
-    expect(favoritePosition.pixels, greaterThan(0));
-    await tester.dragFrom(tester.getCenter(favoriteCategories),
-        const Offset(170, 0), kind: PointerDeviceKind.mouse);
-    expect(favoritePosition.pixels, 0);
+    expect(find.text('0 Resep Ditampilkan'), findsOneWidget);
   });
 }

@@ -1,121 +1,98 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import '../theme/app_theme.dart';
+
+import '../services/recipe_service.dart';
 
 class NotificationsSheet extends StatelessWidget {
-  const NotificationsSheet({super.key});
+  final String? uid;
 
-  static void show(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => const NotificationsSheet(),
-    );
-  }
+  const NotificationsSheet({super.key, this.uid});
+
+  static void show(BuildContext context, {String? uid}) => showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        builder: (context) => NotificationsSheet(uid: uid),
+      );
 
   @override
-  Widget build(BuildContext context) {
-    final notifications = [
-      {
-        'title': 'Chef Kenji menyukai resepmu',
-        'desc': 'Salmon Mentai Rice Bowl Spesial mendapat +24 suka baru.',
-        'time': '12 menit lalu',
-        'icon': Icons.favorite,
-      },
-      {
-        'title': 'Tantangan Dapur Akhir Pekan!',
-        'desc': 'Unggah kreasi masakan Nusantara dan raih badge Koki Utama.',
-        'time': '2 jam lalu',
-        'icon': Icons.local_fire_department,
-      },
-      {
-        'title': 'Sarah Michaels membagikan resep baru',
-        'desc': 'Creamy Truffle Pasta kini tersedia di katalog Eksplor.',
-        'time': 'Kemarin',
-        'icon': Icons.restaurant_menu,
-      },
-    ];
-
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: const BoxDecoration(
-        color: AppColors.surfaceContainerLowest,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Notifikasi Terbaru',
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
+  Widget build(BuildContext context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Row(children: [
+              const Expanded(
+                  child: Text('Notifikasi',
+                      style: TextStyle(
+                          fontSize: 20, fontWeight: FontWeight.bold))),
               IconButton(
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.close, color: AppColors.secondary),
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close)),
+            ]),
+            if (uid == null)
+              const Text('Masuk akun untuk melihat aktivitas resep Anda.')
+            else
+              StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: RecipeService.watchNotifications(uid!),
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return const Text('Gagal memuat notifikasi.');
+                  }
+                  if (!snapshot.hasData) {
+                    return const CircularProgressIndicator();
+                  }
+                  final items = snapshot.data!.docs.toList()
+                    ..sort((a, b) {
+                      final dateA = (a.data()['createdAt'] as Timestamp?)
+                              ?.millisecondsSinceEpoch ??
+                          0;
+                      final dateB = (b.data()['createdAt'] as Timestamp?)
+                              ?.millisecondsSinceEpoch ??
+                          0;
+                      return dateB.compareTo(dateA);
+                    });
+                  if (items.isEmpty) {
+                    return const Text('Belum ada aktivitas baru.');
+                  }
+                  return Flexible(
+                      child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: items.length,
+                    itemBuilder: (context, index) {
+                      final item = items[index];
+                      final data = item.data();
+                      final action = switch (data['kind']) {
+                        'like' => 'menyukai',
+                        'recook' => 'memasak ulang',
+                        _ => 'mengulas',
+                      };
+                      return ListTile(
+                        leading: Icon(data['seen'] == true
+                            ? Icons.notifications_none
+                            : Icons.notifications_active),
+                        title:
+                            Text('Seseorang $action resep "${data['title']}"'),
+                        subtitle: Text(data['seen'] == true
+                            ? 'Sudah dibaca'
+                            : 'Ketuk untuk tandai dibaca'),
+                        onTap: data['seen'] == true
+                            ? null
+                            : () async {
+                                try {
+                                  await RecipeService.markNotificationRead(item.id);
+                                } catch (_) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Gagal menandai notifikasi dibaca.')),
+                                    );
+                                  }
+                                }
+                              },
+                      );
+                    },
+                  ));
+                },
               ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          ...notifications.map((item) {
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryFixed,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      item['icon'] as IconData,
-                      color: AppColors.primary,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          item['title'] as String,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                            color: AppColors.onSurface,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          item['desc'] as String,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: AppColors.onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          item['time'] as String,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: AppColors.outline,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }),
-        ],
-      ),
-    );
-  }
+          ]),
+        ),
+      );
 }

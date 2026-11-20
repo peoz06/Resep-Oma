@@ -20,7 +20,7 @@ class AuthResult {
 
 /// Lapisan autentikasi berbasis Firebase Auth.
 ///
-/// Metode yang didukung: Email/Password, Google Sign-In, dan Anonymous (tamu).
+/// Metode yang didukung: Email/Password dan Google Sign-In; tamu tanpa sesi.
 class AuthService {
   static bool _googleInitialized = false;
 
@@ -57,20 +57,6 @@ class AuthService {
     }
 
     return _completeSignIn(user);
-  }
-
-  /// Buat sesi anonim untuk mode tamu (tak wajib — kegagalan diabaikan).
-  static Future<AuthResult> signInAnonymously() async {
-    if (!isReady) return _notConfigured;
-    if (_auth.currentUser != null) {
-      return const AuthResult(ok: true, message: 'Sesi tamu sudah aktif.');
-    }
-    try {
-      await _auth.signInAnonymously();
-      return const AuthResult(ok: true, message: 'Masuk sebagai tamu.');
-    } catch (e) {
-      return AuthResult(ok: false, message: 'Gagal membuat sesi tamu: $e');
-    }
   }
 
   static Future<void> _safeSignOut() async {
@@ -127,7 +113,26 @@ class AuthService {
         email: email,
         provider: 'password',
       );
-      await _saveProfile(profile);
+      try {
+        await _saveProfile(profile);
+      } catch (e) {
+        // Jangan tinggalkan akun Auth yatim bila profil wajib gagal dibuat.
+        try {
+          await user.delete();
+        } catch (_) {
+          await _safeSignOut();
+          return const AuthResult(ok: false,
+              message: 'Profil gagal disimpan. Akun mungkin sudah dibuat; coba masuk atau reset sandi.');
+        }
+        return AuthResult(ok: false, message: profileErrorMessage(e));
+      }
+      if (!user.emailVerified) {
+        try {
+          await user.sendEmailVerification();
+        } catch (_) {
+          // Akun tetap bisa dipakai; email verifikasi dapat dikirim ulang dari profil.
+        }
+      }
       return await _completeSignIn(user);
     } on FirebaseAuthException catch (e) {
       return AuthResult(ok: false, message: _mapError(e));
@@ -196,6 +201,26 @@ class AuthService {
       return AuthResult(ok: false, message: _mapError(e));
     } catch (_) {
       return const AuthResult(ok: false, message: 'Gagal mengubah kata sandi. Coba lagi.');
+    }
+  }
+
+  static Future<AuthResult> sendVerificationEmail() async {
+    if (!isReady) return _notConfigured;
+    final user = firebaseUser;
+    if (user == null || user.isAnonymous || user.email == null) {
+      return const AuthResult(ok: false, message: 'Masuk dengan email terlebih dahulu.');
+    }
+    try {
+      await user.reload();
+      if (_auth.currentUser?.emailVerified == true) {
+        return const AuthResult(ok: true, message: 'Email sudah terverifikasi.');
+      }
+      await _auth.currentUser!.sendEmailVerification();
+      return const AuthResult(ok: true, message: 'Tautan verifikasi dikirim ke email Anda.');
+    } on FirebaseAuthException catch (e) {
+      return AuthResult(ok: false, message: _mapError(e));
+    } catch (_) {
+      return const AuthResult(ok: false, message: 'Gagal mengirim verifikasi. Coba lagi.');
     }
   }
 
@@ -296,16 +321,11 @@ class AuthService {
         }
       }
 
-      if (email != null &&
-          email.trim().isNotEmpty &&
-          email.trim() != user.email) {
-        final trimmed = email.trim();
-        updates['email'] = trimmed;
-        try {
-          await user.verifyBeforeUpdateEmail(trimmed);
-        } catch (_) {
-          // terlalu sering / butuh login ulang — profil Firestore tetap disimpan
-        }
+      final newEmail = email?.trim();
+      final emailChanged = newEmail != null && newEmail.isNotEmpty && newEmail != user.email;
+      if (emailChanged) {
+        // Firestore hanya mengikuti email Auth sesudah tautan konfirmasi dipakai.
+        await user.verifyBeforeUpdateEmail(newEmail);
       }
 
       if (avatar != null && avatar.isNotEmpty) {
@@ -315,15 +335,33 @@ class AuthService {
       if (updates.isEmpty) {
         final profile = await _loadProfile(user);
         return AuthResult(
-            ok: true, message: 'Tidak ada perubahan.', user: profile);
+            ok: true,
+            message: emailChanged
+                ? 'Konfirmasi perubahan email melalui tautan yang dikirim. Profil belum mengubah email.'
+                : 'Tidak ada perubahan.',
+            user: profile);
       }
 
       updates['updatedAt'] = FieldValue.serverTimestamp();
       await _users.doc(user.uid).set(updates, SetOptions(merge: true));
 
       final profile = await _loadProfile(user);
+      if (updates.containsKey('name') || updates.containsKey('avatar')) {
+        try {
+          await _syncRecipeAuthors(profile);
+        } catch (_) {
+          return AuthResult(ok: true, user: profile,
+              message: 'Profil tersimpan, tetapi nama/foto pada resep lama belum diperbarui. Coba simpan profil lagi.');
+        }
+      }
       return AuthResult(
-          ok: true, message: 'Profil berhasil disimpan.', user: profile);
+          ok: true,
+          message: emailChanged
+              ? 'Nama disimpan. Konfirmasi email baru melalui tautan yang dikirim.'
+              : 'Profil berhasil disimpan.',
+          user: profile);
+    } on FirebaseAuthException catch (e) {
+      return AuthResult(ok: false, message: _mapError(e));
     } catch (e) {
       return AuthResult(ok: false, message: profileErrorMessage(e));
     }
@@ -361,6 +399,27 @@ class AuthService {
                 doc.exists ? AppUser.fromFirestore(doc.id, doc.data()!) : null,
           );
 
+  static Future<void> _syncRecipeAuthors(AppUser profile) async {
+    final recipes = await FirebaseFirestore.instance.collection('recipes')
+        .where('authorId', isEqualTo: profile.uid).get();
+    for (var start = 0; start < recipes.docs.length; start += 400) {
+      final batch = FirebaseFirestore.instance.batch();
+      var changed = false;
+      for (final recipe in recipes.docs.skip(start).take(400)) {
+        if (recipe.data()['authorName'] != profile.name ||
+            recipe.data()['authorAvatar'] != profile.avatar) {
+          changed = true;
+          batch.update(recipe.reference, {
+            'authorName': profile.name,
+            'authorAvatar': profile.avatar,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        }
+      }
+      if (changed) await batch.commit();
+    }
+  }
+
   /// Ambil (atau buat bila belum ada) dokumen profil `users/{uid}` dari server.
   static Future<AppUser> _loadProfile(
     User user, {
@@ -378,7 +437,16 @@ class AuthService {
         .doc(user.uid)
         .get(const GetOptions(source: Source.server))
         .timeout(const Duration(seconds: 6));
-    if (snap.exists) return AppUser.fromFirestore(user.uid, snap.data()!);
+    if (snap.exists) {
+      final profile = AppUser.fromFirestore(user.uid, snap.data()!);
+      if (profile.isActive && user.email != null && user.email != profile.email) {
+        await _users.doc(user.uid).update({
+          'email': user.email, 'updatedAt': FieldValue.serverTimestamp(),
+        });
+        return profile.copyWith(email: user.email);
+      }
+      return profile;
+    }
     await _saveProfile(fallback);
     return fallback;
   }

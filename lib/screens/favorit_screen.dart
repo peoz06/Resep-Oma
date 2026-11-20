@@ -26,15 +26,6 @@ class _FavoritScreenState extends State<FavoritScreen> {
   String _activeCategory = 'all';
   String _sortOrder = 'newest'; // 'newest' or 'popular'
 
-  final List<Map<String, String>> _chips = [
-    {'id': 'all', 'label': 'Semua'},
-    {'id': 'asian', 'label': 'Asian Food'},
-    {'id': 'western', 'label': 'Western'},
-    {'id': 'pasta', 'label': 'Pasta'},
-    {'id': 'dessert', 'label': 'Camilan & Dessert'},
-    {'id': 'healthy', 'label': 'Diet Sehat'},
-  ];
-
   @override
   void dispose() {
     _searchController.dispose();
@@ -44,6 +35,12 @@ class _FavoritScreenState extends State<FavoritScreen> {
   @override
   Widget build(BuildContext context) {
     final query = _searchController.text.trim().toLowerCase();
+    final chips = [
+      {'id': 'all', 'label': 'Semua'},
+      for (final category in widget.recipes.where((recipe) => recipe.isFavorite)
+          .map((recipe) => recipe.category).toSet())
+        {'id': category.toLowerCase(), 'label': category},
+    ];
 
     var favorites = widget.recipes.where((r) => r.isFavorite).where((r) {
       final matchCat = _activeCategory == 'all' ||
@@ -59,6 +56,9 @@ class _FavoritScreenState extends State<FavoritScreen> {
 
     if (_sortOrder == 'popular') {
       favorites.sort((a, b) => b.likesCount.compareTo(a.likesCount));
+    } else {
+      favorites.sort((a, b) => (b.favoritedAt ?? DateTime(1970))
+          .compareTo(a.favoritedAt ?? DateTime(1970)));
     }
 
     return ListView(
@@ -160,7 +160,7 @@ class _FavoritScreenState extends State<FavoritScreen> {
           scrollDirection: Axis.horizontal,
           clipBehavior: Clip.none,
           child: Row(
-            children: _chips.map((chip) {
+            children: chips.map((chip) {
               final active = _activeCategory == chip['id'];
               return Padding(
                 padding: const EdgeInsets.only(right: 8),

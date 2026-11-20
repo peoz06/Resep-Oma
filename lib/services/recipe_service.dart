@@ -21,6 +21,10 @@ class ServiceResult {
 /// Koleksi yang dipakai:
 /// - `recipes/{id}`    — resep beserta bahan & langkah
 /// - `favorites/{uid__recipeId}` — resep yang disukai pengguna
+/// - `likes`, `recooks`, `follows` — aktivitas per akun
+/// - `recipes/{id}/comments` — ulasan dan rating
+/// - `notifications` — aktivitas resep penulis
+/// - `drafts/{uid}` — satu draf teks per akun
 /// - `reports/{id}`    — laporan resep dari komunitas
 /// - `users/{uid}`     — profil pengguna (lihat [AuthService])
 ///
@@ -35,6 +39,16 @@ class RecipeService {
       _db.collection('recipes');
   static CollectionReference<Map<String, dynamic>> get _favorites =>
       _db.collection('favorites');
+  static CollectionReference<Map<String, dynamic>> get _likes =>
+      _db.collection('likes');
+  static CollectionReference<Map<String, dynamic>> get _recooks =>
+      _db.collection('recooks');
+  static CollectionReference<Map<String, dynamic>> get _follows =>
+      _db.collection('follows');
+  static CollectionReference<Map<String, dynamic>> get _notifications =>
+      _db.collection('notifications');
+  static CollectionReference<Map<String, dynamic>> get _drafts =>
+      _db.collection('drafts');
   static CollectionReference<Map<String, dynamic>> get _reports =>
       _db.collection('reports');
   static CollectionReference<Map<String, dynamic>> get _users =>
@@ -83,6 +97,9 @@ class RecipeService {
   }
 
   static String errorMessage(Object e) {
+    if (e is TimeoutException) {
+      return 'Koneksi ke Firestore terlalu lama. Coba muat resep lagi.';
+    }
     if (e is FirebaseException) {
       switch (e.code) {
         case 'permission-denied':
@@ -104,15 +121,31 @@ class RecipeService {
   static Future<List<Recipe>> fetchRecipes({
     String? currentUid,
     Set<String> favoriteIds = const {},
+    Map<String, DateTime> favoriteDates = const {},
+    Set<String> likedIds = const {},
   }) async {
     if (!isReady) return const [];
-    final snap = await _read(_recipes);
+    // Cache kosong saat koneksi lambat bukan bukti katalog di server kosong.
+    QuerySnapshot<Map<String, dynamic>> snap;
+    try {
+      snap = await _recipes.get(const GetOptions(source: Source.server))
+          .timeout(_readTimeout);
+    } on TimeoutException {
+      snap = await _recipes.get(const GetOptions(source: Source.cache));
+      if (snap.docs.isEmpty) rethrow;
+    } on FirebaseException catch (e) {
+      if (e.code != 'unavailable') rethrow;
+      snap = await _recipes.get(const GetOptions(source: Source.cache));
+      if (snap.docs.isEmpty) rethrow;
+    }
     final docs = snap.docs.toList()..sort(_newestFirst);
     return docs
         .map((doc) => Recipe.fromFirestore(
               doc.id,
               doc.data(),
               isFavorite: favoriteIds.contains(doc.id),
+              favoritedAt: favoriteDates[doc.id],
+              isLiked: likedIds.contains(doc.id),
               currentUid: currentUid,
             ))
         .toList();
@@ -121,8 +154,6 @@ class RecipeService {
   static Future<ServiceResult> saveRecipe({
     String? recipeId,
     required String authorId,
-    required String authorName,
-    String? authorAvatar,
     required String title,
     required String description,
     required String category,
@@ -184,15 +215,18 @@ class RecipeService {
 
       final now = DateTime.now();
       final code = '#RSP-${1000 + now.millisecondsSinceEpoch % 9000}';
+      final profile = await _readDoc(_users.doc(authorId));
+      if (profile.data() == null) {
+        return const ServiceResult(ok: false, message: 'Profil penulis tidak ditemukan.');
+      }
       await _recipes.add({
         ...data,
         'code': code,
         'authorId': authorId,
-        'authorName': authorName,
-        'authorAvatar': authorAvatar,
+        'authorName': profile.data()!['name'],
+        'authorAvatar': profile.data()!['avatar'],
         'likesCount': 0,
         'recooksCount': 0,
-        'reportedCount': 0,
         'verified': false,
         'status': 'published',
         'createdAt': FieldValue.serverTimestamp(),
@@ -220,14 +254,66 @@ class RecipeService {
     return const ServiceResult(ok: true, message: 'Resep telah dihapus.');
   }
 
+  static Future<ServiceResult> setRecipeVerified(String id, bool verified) async {
+    if (!isReady) return _notConfigured;
+    try {
+      await _recipes.doc(id).update({'verified': verified});
+      return ServiceResult(ok: true,
+          message: verified ? 'Resep terverifikasi.' : 'Verifikasi resep dicabut.');
+    } catch (e) {
+      return ServiceResult(ok: false, message: errorMessage(e));
+    }
+  }
+
+  static Future<Map<String, dynamic>?> fetchDraft(String uid) async {
+    if (!isReady) return null;
+    return (await _readDoc(_drafts.doc(uid))).data();
+  }
+
+  static Future<ServiceResult> saveDraft(String uid, Map<String, dynamic> data) async {
+    // shortcut: satu draf teks per akun; buat daftar draf jika pengguna perlu beberapa.
+    if (!isReady) return _notConfigured;
+    if (uid != AuthService.firebaseUser?.uid || !AuthService.hasRealSession ||
+        (data['title'] as String).trim().isEmpty ||
+        (data['title'] as String).trim().length > 60) {
+      return const ServiceResult(ok: false, message: 'Masukkan judul draf (maksimal 60 karakter).');
+    }
+    try {
+      await _drafts.doc(uid).set({
+        ...data, 'uid': uid, 'updatedAt': FieldValue.serverTimestamp(),
+      });
+      return const ServiceResult(ok: true, message: 'Draf tersimpan. Foto lokal tidak ikut tersimpan.');
+    } catch (e) {
+      return ServiceResult(ok: false, message: errorMessage(e));
+    }
+  }
+
+  static Future<ServiceResult> deleteDraft(String uid) async {
+    if (!isReady) return _notConfigured;
+    if (uid != AuthService.firebaseUser?.uid) {
+      return const ServiceResult(ok: false, message: 'Masuk dengan akun pemilik draf.');
+    }
+    try {
+      await _drafts.doc(uid).delete();
+      return const ServiceResult(ok: true, message: 'Draf dihapus.');
+    } catch (e) {
+      return ServiceResult(ok: false, message: errorMessage(e));
+    }
+  }
+
   // ───────────────────────── FAVORIT ─────────────────────────
 
   static String _favId(String uid, String recipeId) => '${uid}__$recipeId';
 
-  static Future<Set<String>> fetchFavoriteIds(String uid) async {
+  static Future<Map<String, DateTime>> fetchFavoriteDates(String uid) async {
     if (!isReady) return const {};
     final snap = await _read(_favorites.where('uid', isEqualTo: uid));
-    return snap.docs.map((d) => (d.data()['recipeId'] ?? '') as String).toSet();
+    return {
+      for (final doc in snap.docs)
+        (doc.data()['recipeId'] ?? '') as String:
+            (doc.data()['createdAt'] as Timestamp?)?.toDate() ??
+                DateTime.fromMillisecondsSinceEpoch(0),
+    };
   }
 
   /// Tambah/hapus favorit. Mengembalikan status favorit TERBARU, atau null
@@ -255,6 +341,194 @@ class RecipeService {
     }
   }
 
+  static Future<Set<String>> fetchLikedIds(String uid) async {
+    if (!isReady) return const {};
+    final snap = await _read(_likes.where('uid', isEqualTo: uid));
+    return snap.docs.map((d) => d.data()['recipeId'] as String).toSet();
+  }
+
+  /// Like dan angka pada resep selalu diubah dalam satu transaksi.
+  static Future<bool?> toggleLike(String uid, String recipeId) async {
+    if (!isReady || uid != AuthService.firebaseUser?.uid ||
+        !AuthService.hasRealSession) {
+      return null;
+    }
+    try {
+      return await _db.runTransaction<bool>((tx) async {
+        final recipeRef = _recipes.doc(recipeId);
+        final likeRef = _likes.doc(_favId(uid, recipeId));
+        final recipe = await tx.get(recipeRef);
+        final like = await tx.get(likeRef);
+        final notificationRef = _notifications.doc('like-${_favId(uid, recipeId)}');
+        final notification = await tx.get(notificationRef);
+        if (!recipe.exists) throw StateError('Resep tidak ditemukan');
+        final liked = !like.exists;
+        final count = (recipe.data()?['likesCount'] as num?)?.toInt() ?? 0;
+        tx.update(recipeRef, {'likesCount': count + (liked ? 1 : -1)});
+        if (liked) {
+          tx.set(likeRef, {
+            'uid': uid, 'recipeId': recipeId,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+          final author = recipe.data()?['authorId'] as String?;
+          if (author != null && author != uid && !notification.exists) {
+            tx.set(notificationRef, {
+              'recipientId': author, 'actorId': uid, 'recipeId': recipeId,
+              'kind': 'like', 'title': recipe.data()?['title'],
+              'seen': false, 'createdAt': FieldValue.serverTimestamp(),
+            });
+          }
+        } else {
+          tx.delete(likeRef);
+        }
+        return liked;
+      });
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Setiap akun dapat menandai satu recook untuk satu resep.
+  static Future<ServiceResult> markRecook(String uid, String recipeId) async {
+    if (!isReady || uid != AuthService.firebaseUser?.uid ||
+        !AuthService.hasRealSession) {
+      return const ServiceResult(ok: false, message: 'Masuk akun untuk menandai recook.');
+    }
+    try {
+      return await _db.runTransaction<ServiceResult>((tx) async {
+        final recipeRef = _recipes.doc(recipeId);
+        final recookRef = _recooks.doc(_favId(uid, recipeId));
+        final recipe = await tx.get(recipeRef);
+        final existing = await tx.get(recookRef);
+        if (!recipe.exists) {
+          return const ServiceResult(ok: false, message: 'Resep sudah tidak tersedia.');
+        }
+        if (existing.exists) {
+          return const ServiceResult(ok: false, message: 'Anda sudah menandai recook resep ini.');
+        }
+        final count = (recipe.data()?['recooksCount'] as num?)?.toInt() ?? 0;
+        tx.update(recipeRef, {'recooksCount': count + 1});
+        tx.set(recookRef, {
+          'uid': uid, 'recipeId': recipeId,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        final author = recipe.data()?['authorId'] as String?;
+        if (author != null && author != uid) {
+          tx.set(_notifications.doc('recook-${_favId(uid, recipeId)}'), {
+            'recipientId': author, 'actorId': uid, 'recipeId': recipeId,
+            'kind': 'recook', 'title': recipe.data()?['title'],
+            'seen': false, 'createdAt': FieldValue.serverTimestamp(),
+          });
+        }
+        return const ServiceResult(ok: true, message: 'Recook berhasil dicatat.');
+      });
+    } catch (e) {
+      return ServiceResult(ok: false, message: errorMessage(e));
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> fetchComments(String recipeId) async {
+    if (!isReady) return const [];
+    final snap = await _read(_recipes.doc(recipeId).collection('comments'));
+    final docs = snap.docs.toList()..sort(_newestFirst);
+    return [for (final doc in docs) {'id': doc.id, ...doc.data()}];
+  }
+
+  static Future<ServiceResult> addComment({
+    required String uid, required String recipeId,
+    required String text, required int rating,
+  }) async {
+    if (!isReady) return _notConfigured;
+    if (uid != AuthService.firebaseUser?.uid || !AuthService.hasRealSession ||
+        text.trim().isEmpty || text.trim().length > 500 || rating < 1 || rating > 5) {
+      return const ServiceResult(ok: false, message: 'Ulasan tidak valid.');
+    }
+    try {
+      final recipe = await _readDoc(_recipes.doc(recipeId));
+      if (!recipe.exists) return const ServiceResult(ok: false, message: 'Resep tidak ditemukan.');
+      final profile = await _readDoc(_users.doc(uid));
+      if (!profile.exists) return const ServiceResult(ok: false, message: 'Profil tidak ditemukan.');
+      // shortcut: satu ulasan per akun per resep agar rating tak bisa dispam.
+      final comment = _recipes.doc(recipeId).collection('comments')
+          .doc(_favId(uid, recipeId));
+      final existing = await _readDoc(comment);
+      if (existing.exists) {
+        await comment.update({'text': text.trim(), 'rating': rating});
+        return const ServiceResult(ok: true, message: 'Ulasan diperbarui.');
+      }
+      final notificationRef = _notifications.doc('comment-${comment.id}');
+      final oldNotification = await _readDoc(notificationRef);
+      final batch = _db.batch();
+      batch.set(comment, {
+        'authorId': uid, 'authorName': profile.data()!['name'], 'text': text.trim(),
+        'rating': rating, 'createdAt': FieldValue.serverTimestamp(),
+      });
+      final author = recipe.data()?['authorId'] as String?;
+      if (author != null && author != uid && !oldNotification.exists) {
+        batch.set(notificationRef, {
+          'recipientId': author, 'actorId': uid, 'recipeId': recipeId,
+          'kind': 'comment', 'eventId': comment.id,
+          'title': recipe.data()?['title'], 'seen': false,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+      await batch.commit();
+      return const ServiceResult(ok: true, message: 'Ulasan terkirim.');
+    } catch (e) {
+      return ServiceResult(ok: false, message: errorMessage(e));
+    }
+  }
+
+  static Future<ServiceResult> deleteComment(String recipeId, String commentId) async {
+    if (!isReady) return _notConfigured;
+    try {
+      await _recipes.doc(recipeId).collection('comments').doc(commentId).delete();
+      return const ServiceResult(ok: true, message: 'Ulasan dihapus.');
+    } catch (e) {
+      return ServiceResult(ok: false, message: errorMessage(e));
+    }
+  }
+
+  static Future<bool?> toggleFollow(String uid, String authorId) async {
+    if (!isReady || uid == authorId || authorId.isEmpty ||
+        uid != AuthService.firebaseUser?.uid || !AuthService.hasRealSession) {
+      return null;
+    }
+    try {
+      final ref = _follows.doc(_favId(uid, authorId));
+      final existing = await _readDoc(ref);
+      if (existing.exists) {
+        await ref.delete();
+        return false;
+      }
+      await ref.set({
+        'followerId': uid, 'followingId': authorId,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      return true;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<bool> isFollowing(String uid, String authorId) async {
+    if (!isReady || authorId.isEmpty) return false;
+    return (await _readDoc(_follows.doc(_favId(uid, authorId)))).exists;
+  }
+
+  static Future<(int, int)> followCounts(String uid) async {
+    if (!isReady) return (0, 0);
+    final followers = await _read(_follows.where('followingId', isEqualTo: uid));
+    final following = await _read(_follows.where('followerId', isEqualTo: uid));
+    return (followers.size, following.size);
+  }
+
+  static Stream<QuerySnapshot<Map<String, dynamic>>> watchNotifications(String uid) =>
+      _notifications.where('recipientId', isEqualTo: uid).snapshots();
+
+  static Future<void> markNotificationRead(String id) =>
+      _notifications.doc(id).update({'seen': true});
+
   // ───────────────────────── LAPORAN ─────────────────────────
 
   static Map<String, dynamic> _reportToMap(
@@ -279,25 +553,23 @@ class RecipeService {
     return docs.map(_reportToMap).toList();
   }
 
-  static Future<int> countOpenReports() async {
-    final reports = await fetchReports();
-    return reports.where((r) => r['status'] == 'open').length;
-  }
-
   static Future<ServiceResult> submitReport({
     required String reporterId,
-    required String reporterName,
     required String recipeId,
     required String recipeTitle,
     required String reason,
   }) async {
     if (!isReady) return _notConfigured;
     try {
+      final profile = await _readDoc(_users.doc(reporterId));
+      if (!profile.exists) {
+        return const ServiceResult(ok: false, message: 'Profil pelapor tidak ditemukan.');
+      }
       await _reports.add({
         'recipeId': recipeId,
         'recipeTitle': recipeTitle,
         'reporterId': reporterId,
-        'reporterName': reporterName,
+        'reporterName': profile.data()!['name'],
         'reason': reason,
         'status': 'open',
         'createdAt': FieldValue.serverTimestamp(),
@@ -398,11 +670,35 @@ class RecipeService {
           ok: false, message: 'Anda tidak bisa memoderasi akun sendiri.');
     }
     try {
+      final profile = await _readDoc(_users.doc(uid));
+      if (profile.data()?['pending'] == true) {
+        return const ServiceResult(ok: false,
+            message: 'Profil pending belum punya akun login untuk dimoderasi.');
+      }
       await _users.doc(uid).update(
         {'status': status, 'updatedAt': FieldValue.serverTimestamp()},
       );
       return const ServiceResult(
           ok: true, message: 'Status pengguna diperbarui.');
+    } catch (e) {
+      return ServiceResult(ok: false, message: errorMessage(e));
+    }
+  }
+
+  static Future<ServiceResult> setUserRole(String uid, String role) async {
+    if (!isReady) return _notConfigured;
+    if (!const ['user', 'creator', 'admin'].contains(role) ||
+        uid == AuthService.firebaseUser?.uid) {
+      return const ServiceResult(ok: false, message: 'Role tidak valid atau akun sendiri.');
+    }
+    try {
+      final profile = await _readDoc(_users.doc(uid));
+      if (profile.data()?['pending'] == true) {
+        return const ServiceResult(ok: false,
+            message: 'Profil pending belum punya akun login. Ubah role sesudah pemilik mendaftar.');
+      }
+      await _users.doc(uid).update({'role': role, 'updatedAt': FieldValue.serverTimestamp()});
+      return const ServiceResult(ok: true, message: 'Role pengguna diperbarui.');
     } catch (e) {
       return ServiceResult(ok: false, message: errorMessage(e));
     }

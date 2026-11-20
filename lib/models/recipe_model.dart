@@ -68,10 +68,12 @@ class Recipe {
   final String category;
   final String filterKey;
   final String author;
+  final String authorId;
   final String? authorAvatar;
   final bool verified;
   final String likes;
   final int likesCount;
+  final int recooksCount;
   final String? recooks;
   final String time;
   final String servings;
@@ -79,9 +81,10 @@ class Recipe {
   final String image;
   final List<String>? secondaryImages;
   bool isFavorite;
+  final DateTime? favoritedAt;
+  bool isLiked;
   final bool isMyRecipe;
   final String publishedAgo;
-  final int? reportedCount;
   final List<Ingredient> ingredients;
   final List<CookingStep> steps;
 
@@ -93,10 +96,12 @@ class Recipe {
     required this.category,
     required this.filterKey,
     required this.author,
+    this.authorId = '',
     this.authorAvatar,
     this.verified = false,
     required this.likes,
     required this.likesCount,
+    this.recooksCount = 0,
     this.recooks,
     required this.time,
     required this.servings,
@@ -104,9 +109,10 @@ class Recipe {
     required this.image,
     this.secondaryImages,
     this.isFavorite = false,
+    this.favoritedAt,
+    this.isLiked = false,
     this.isMyRecipe = false,
     required this.publishedAgo,
-    this.reportedCount,
     required this.ingredients,
     required this.steps,
   });
@@ -116,6 +122,8 @@ class Recipe {
     String id,
     Map<String, dynamic> data, {
     bool isFavorite = false,
+    DateTime? favoritedAt,
+    bool isLiked = false,
     String? currentUid,
   }) {
     final authorId = (data['authorId'] ?? '') as String;
@@ -123,9 +131,6 @@ class Recipe {
         data['likesCount'] is num ? (data['likesCount'] as num).toInt() : 0;
     final recooksCount =
         data['recooksCount'] is num ? (data['recooksCount'] as num).toInt() : 0;
-    final reportedCount = data['reportedCount'] is num
-        ? (data['reportedCount'] as num).toInt()
-        : null;
     final category = (data['category'] ?? '') as String;
 
     final rawIngredients = (data['ingredients'] as List?) ?? const [];
@@ -139,12 +144,14 @@ class Recipe {
       category: category,
       filterKey: category.toLowerCase(),
       author: (data['authorName'] ?? 'Anonim') as String,
+      authorId: authorId,
       authorAvatar: data['authorAvatar'] as String?,
       verified: (data['verified'] ?? false) as bool,
       likes: likesCount >= 1000
           ? '${(likesCount / 1000).toStringAsFixed(1)}k'
           : '$likesCount',
       likesCount: likesCount,
+      recooksCount: recooksCount,
       recooks: '$recooksCount recook',
       time: (data['cookTime'] ?? '-') as String,
       servings: (data['servings'] ?? '-') as String,
@@ -153,10 +160,11 @@ class Recipe {
       secondaryImages:
           (data['images'] as List?)?.map((e) => '$e').toList(growable: false),
       isFavorite: isFavorite,
+      favoritedAt: favoritedAt,
+      isLiked: isLiked,
       isMyRecipe:
           currentUid != null && currentUid.isNotEmpty && authorId == currentUid,
       publishedAgo: Recipe._formatAgo(data['createdAt']),
-      reportedCount: reportedCount,
       ingredients: [
         for (var i = 0; i < rawIngredients.length; i++)
           Ingredient.fromFirestore(
@@ -202,10 +210,12 @@ class Recipe {
     String? category,
     String? filterKey,
     String? author,
+    String? authorId,
     String? authorAvatar,
     bool? verified,
     String? likes,
     int? likesCount,
+    int? recooksCount,
     String? recooks,
     String? time,
     String? servings,
@@ -213,9 +223,10 @@ class Recipe {
     String? image,
     List<String>? secondaryImages,
     bool? isFavorite,
+    DateTime? favoritedAt,
+    bool? isLiked,
     bool? isMyRecipe,
     String? publishedAgo,
-    int? reportedCount,
     List<Ingredient>? ingredients,
     List<CookingStep>? steps,
   }) {
@@ -227,10 +238,12 @@ class Recipe {
       category: category ?? this.category,
       filterKey: filterKey ?? this.filterKey,
       author: author ?? this.author,
+      authorId: authorId ?? this.authorId,
       authorAvatar: authorAvatar ?? this.authorAvatar,
       verified: verified ?? this.verified,
       likes: likes ?? this.likes,
       likesCount: likesCount ?? this.likesCount,
+      recooksCount: recooksCount ?? this.recooksCount,
       recooks: recooks ?? this.recooks,
       time: time ?? this.time,
       servings: servings ?? this.servings,
@@ -238,9 +251,10 @@ class Recipe {
       image: image ?? this.image,
       secondaryImages: secondaryImages ?? this.secondaryImages,
       isFavorite: isFavorite ?? this.isFavorite,
+      favoritedAt: isFavorite == false ? null : favoritedAt ?? this.favoritedAt,
+      isLiked: isLiked ?? this.isLiked,
       isMyRecipe: isMyRecipe ?? this.isMyRecipe,
       publishedAgo: publishedAgo ?? this.publishedAgo,
-      reportedCount: reportedCount ?? this.reportedCount,
       ingredients: ingredients ?? this.ingredients,
       steps: steps ?? this.steps,
     );
@@ -365,7 +379,7 @@ class MockData {
         verified: true,
         likes: '1.5k',
         likesCount: 1500,
-        recooks: '920 recook',
+        recooks: '920 recook', recooksCount: 920,
         time: '40 Menit',
         servings: '3-4 Porsi',
         difficulty: 'Sedang',
@@ -419,7 +433,7 @@ class MockData {
         verified: true,
         likes: '2.1k',
         likesCount: 2100,
-        recooks: '1.4k recook',
+        recooks: '1.4k recook', recooksCount: 1400,
         time: '30 Menit',
         servings: '2 Porsi',
         difficulty: 'Mudah',
@@ -469,7 +483,7 @@ class MockData {
         verified: false,
         likes: '1.8k',
         likesCount: 1800,
-        recooks: '640 recook',
+        recooks: '640 recook', recooksCount: 640,
         time: '20 Menit',
         servings: '2 Porsi',
         difficulty: 'Mudah',
@@ -518,7 +532,7 @@ class MockData {
         verified: true,
         likes: '1.2k',
         likesCount: 1200,
-        recooks: '1.2k recook',
+        recooks: '1.2k recook', recooksCount: 1200,
         time: '45 Menit',
         servings: '4 Porsi',
         difficulty: 'Menengah',
@@ -567,7 +581,7 @@ class MockData {
         verified: true,
         likes: '890',
         likesCount: 890,
-        recooks: '890 recook',
+        recooks: '890 recook', recooksCount: 890,
         time: '25 Menit',
         servings: '2 Porsi',
         difficulty: 'Mudah',
@@ -616,7 +630,7 @@ class MockData {
         verified: true,
         likes: '2.4k',
         likesCount: 2400,
-        recooks: '2.4k recook',
+        recooks: '2.4k recook', recooksCount: 2400,
         time: '40 Menit',
         servings: '4 Porsi',
         difficulty: 'Menengah',
@@ -665,7 +679,7 @@ class MockData {
         verified: true,
         likes: '3.1k',
         likesCount: 3100,
-        recooks: '1.9k recook',
+        recooks: '1.9k recook', recooksCount: 1900,
         time: '30 Menit',
         servings: '2-3 Porsi',
         difficulty: 'Sedang',
@@ -718,7 +732,7 @@ class MockData {
         verified: false,
         likes: '950',
         likesCount: 950,
-        recooks: '410 recook',
+        recooks: '410 recook', recooksCount: 410,
         time: '35 Menit',
         servings: '3-4 Porsi',
         difficulty: 'Mudah',
@@ -768,7 +782,7 @@ class MockData {
         verified: false,
         likes: '950',
         likesCount: 950,
-        recooks: '730 recook',
+        recooks: '730 recook', recooksCount: 730,
         time: '35 Menit',
         servings: '16 Buah',
         difficulty: 'Mudah',
@@ -814,7 +828,7 @@ class MockData {
         verified: true,
         likes: '1.4k',
         likesCount: 1400,
-        recooks: '810 recook',
+        recooks: '810 recook', recooksCount: 810,
         time: '20 Menit',
         servings: '2 Porsi',
         difficulty: 'Mudah',
@@ -860,7 +874,7 @@ class MockData {
         verified: false,
         likes: '1.9k',
         likesCount: 1900,
-        recooks: '520 recook',
+        recooks: '520 recook', recooksCount: 520,
         time: '30 Menit',
         servings: '2 Porsi',
         difficulty: 'Menengah',

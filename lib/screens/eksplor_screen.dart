@@ -26,16 +26,13 @@ class _EksplorScreenState extends State<EksplorScreen> {
   String _activeTab = 'populer';
   String? _selectedCategory;
 
-  final List<String> _trendingTags = ['#MentaiRice', '#PastaCarbonara', '#VeganDiet', '#DimsumRumahan'];
-
-  final List<Map<String, dynamic>> _categoryGrid = [
-    {'name': 'Sarapan', 'count': '84 resep', 'icon': Icons.wb_twilight, 'filter': 'Sarapan'},
-    {'name': 'Makan Siang', 'count': '152 resep', 'icon': Icons.wb_sunny, 'filter': 'Asian Food'},
-    {'name': 'Makan Malam', 'count': '110 resep', 'icon': Icons.nightlight_round, 'filter': 'Western'},
-    {'name': 'Minuman Segar', 'count': '67 resep', 'icon': Icons.local_bar, 'filter': 'Minuman'},
-    {'name': 'Kue & Dessert', 'count': '95 resep', 'icon': Icons.cake, 'filter': 'Dessert'},
-    {'name': 'Diet Sehat', 'count': '73 resep', 'icon': Icons.eco, 'filter': 'Japanese'},
-  ];
+  Map<String, int> get _categoryCounts {
+    final counts = <String, int>{};
+    for (final recipe in widget.recipes) {
+      counts.update(recipe.category, (count) => count + 1, ifAbsent: () => 1);
+    }
+    return counts;
+  }
 
   @override
   void dispose() {
@@ -46,6 +43,7 @@ class _EksplorScreenState extends State<EksplorScreen> {
   @override
   Widget build(BuildContext context) {
     final query = _searchController.text.trim().toLowerCase();
+    final categories = _categoryCounts;
 
     var filtered = widget.recipes.where((r) {
       final matchesQuery = query.isEmpty ||
@@ -64,7 +62,7 @@ class _EksplorScreenState extends State<EksplorScreen> {
     if (_activeTab == 'populer') {
       filtered.sort((a, b) => b.likesCount.compareTo(a.likesCount));
     } else if (_activeTab == 'recook') {
-      filtered.sort((a, b) => (b.recooks ?? '').compareTo(a.recooks ?? ''));
+      filtered.sort((a, b) => b.recooksCount.compareTo(a.recooksCount));
     }
 
     return ListView(
@@ -119,6 +117,7 @@ class _EksplorScreenState extends State<EksplorScreen> {
             ),
             const SizedBox(width: 10),
             IconButton(
+              tooltip: 'Reset pencarian dan kategori',
               onPressed: () {
                 setState(() {
                   _searchController.clear();
@@ -126,7 +125,7 @@ class _EksplorScreenState extends State<EksplorScreen> {
                 });
                 widget.onShowToast?.call('Filter eksplorasi direset');
               },
-              icon: const Icon(Icons.tune, color: Colors.white, size: 20),
+               icon: const Icon(Icons.restart_alt, color: Colors.white, size: 20),
               style: IconButton.styleFrom(
                 backgroundColor: AppColors.inverseSurface,
                 shape: const CircleBorder(),
@@ -147,8 +146,8 @@ class _EksplorScreenState extends State<EksplorScreen> {
                 children: [
                   Icon(Icons.trending_up, color: AppColors.primary, size: 16),
                   SizedBox(width: 4),
-                  Text(
-                    'TREN:',
+                   Text(
+                     'KATEGORI:',
                     style: TextStyle(
                       color: AppColors.primary,
                       fontSize: 11,
@@ -159,8 +158,8 @@ class _EksplorScreenState extends State<EksplorScreen> {
                 ],
               ),
               const SizedBox(width: 10),
-              ..._trendingTags.map((tag) {
-                final clean = tag.replaceAll('#', '');
+               ...categories.keys.map((tag) {
+                 final clean = tag;
                 return Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: ActionChip(
@@ -220,21 +219,21 @@ class _EksplorScreenState extends State<EksplorScreen> {
             clipBehavior: Clip.none,
             children: [
               _buildCollectionBanner(
-                tag: 'Populer Minggu Ini',
+                 tag: 'Western',
                 tagColor: AppColors.primaryContainer,
                 title: 'Kreasi Western Food Otentik',
-                subtitle: '18 menu gourmet resto bintang 5',
+                 subtitle: '${categories['Western'] ?? 0} resep tersedia',
                 image: MockImages.westernBanner,
                 filterValue: 'Western',
               ),
               const SizedBox(width: 16),
               _buildCollectionBanner(
-                tag: 'Inspirasi Weekend',
+                 tag: 'Nusantara',
                 tagColor: AppColors.tertiaryContainer,
                 title: 'Sajian Hangat Meja Keluarga',
-                subtitle: '24 olahan hidangan nusantara',
+                 subtitle: '${categories['Nusantara'] ?? 0} resep tersedia',
                 image: MockImages.nusantaraBanner,
-                filterValue: 'Asian',
+                 filterValue: 'Nusantara',
               ),
             ],
           ),
@@ -246,7 +245,8 @@ class _EksplorScreenState extends State<EksplorScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text('Kategori Resep', style: Theme.of(context).textTheme.headlineSmall),
-            const Text('6 Kategori', style: TextStyle(color: AppColors.secondary, fontSize: 12)),
+             Text('${categories.length} Kategori',
+                 style: const TextStyle(color: AppColors.secondary, fontSize: 12)),
           ],
         ),
         const SizedBox(height: 12),
@@ -254,7 +254,7 @@ class _EksplorScreenState extends State<EksplorScreen> {
         GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          itemCount: _categoryGrid.length,
+           itemCount: categories.length,
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 3,
             mainAxisSpacing: 10,
@@ -262,12 +262,12 @@ class _EksplorScreenState extends State<EksplorScreen> {
             childAspectRatio: 0.95,
           ),
           itemBuilder: (context, index) {
-            final cat = _categoryGrid[index];
-            final isSelected = _selectedCategory == cat['filter'];
+             final cat = categories.keys.elementAt(index);
+             final isSelected = _selectedCategory == cat;
             return InkWell(
               onTap: () {
                 setState(() {
-                  _selectedCategory = isSelected ? null : cat['filter'] as String;
+                   _selectedCategory = isSelected ? null : cat;
                 });
               },
               borderRadius: BorderRadius.circular(16),
@@ -290,18 +290,18 @@ class _EksplorScreenState extends State<EksplorScreen> {
                         color: AppColors.surfaceContainerHighest,
                         shape: BoxShape.circle,
                       ),
-                      child: Icon(cat['icon'] as IconData, color: AppColors.primary, size: 22),
+                       child: const Icon(Icons.restaurant_menu, color: AppColors.primary, size: 22),
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      cat['name'] as String,
+                       cat,
                       textAlign: TextAlign.center,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                     ),
                     Text(
-                      cat['count'] as String,
+                       '${categories[cat]} resep',
                       style: const TextStyle(color: AppColors.secondary, fontSize: 10),
                     ),
                   ],
@@ -320,9 +320,9 @@ class _EksplorScreenState extends State<EksplorScreen> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Katalog Resep Tren', style: Theme.of(context).textTheme.headlineSmall),
+                 Text('Katalog Resep', style: Theme.of(context).textTheme.headlineSmall),
                 const Text(
-                  'Dipilih khusus oleh komunitas koki rumahan',
+                   'Resep dari komunitas koki rumahan',
                   style: TextStyle(color: AppColors.secondary, fontSize: 12),
                 ),
               ],
@@ -585,7 +585,7 @@ class _EksplorScreenState extends State<EksplorScreen> {
                     Row(
                       children: [
                         AppCachedImage(
-                          imageUrl: recipe.authorAvatar ?? MockImages.chefKenjiAvatar,
+                           imageUrl: recipe.authorAvatar ?? '',
                           width: 20,
                           height: 20,
                           isCircle: true,
@@ -614,7 +614,7 @@ class _EksplorScreenState extends State<EksplorScreen> {
                         const Icon(Icons.repeat, color: AppColors.primaryFixedDim, size: 14),
                         const SizedBox(width: 4),
                         Text(
-                          recipe.recooks ?? '640 recook',
+                           recipe.recooks ?? '0 recook',
                           style: const TextStyle(color: AppColors.primaryFixedDim, fontSize: 11),
                         ),
                       ],

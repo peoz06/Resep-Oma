@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:dapurkita/main.dart';
 import 'package:dapurkita/models/recipe_model.dart';
@@ -9,7 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('Login mulai kosong dan Ingat Saya tidak tercentang',
+  testWidgets('Login memakai email dan tidak menawarkan Ingat Saya palsu',
       (tester) async {
     String? message;
     await tester.pumpWidget(MaterialApp(
@@ -23,12 +25,10 @@ void main() {
     ));
     expect(tester.widgetList<TextField>(find.byType(TextField))
         .map((field) => field.controller?.text), everyElement(isEmpty));
-    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isFalse);
+    expect(find.text('Ingat Saya'), findsNothing);
+    expect(find.text('Email'), findsOneWidget);
     await tester.tap(find.text('Masuk Sekarang'));
     expect(message, contains('email'));
-    await tester.tap(find.byType(Checkbox));
-    await tester.pump();
-    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isTrue);
   });
 
   test('Status akun lama, suspended, banned, dan tidak valid dibedakan', () {
@@ -54,6 +54,11 @@ void main() {
     expect(message, contains('izin'));
     expect(message, isNot(contains('RAW FIRESTORE ERROR')));
     expect(message, isNot(contains('permission-denied')));
+  });
+
+  test('Koneksi katalog yang habis waktu memberi pesan untuk mencoba lagi', () {
+    expect(RecipeService.errorMessage(TimeoutException('koneksi')),
+        contains('Coba muat resep lagi'));
   });
 
   Future<void> openApp(WidgetTester tester) async {

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/recipe_model.dart';
+import '../services/recipe_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/ai_fridge_sheet.dart';
 import '../widgets/app_cached_image.dart';
@@ -11,6 +13,7 @@ class BerandaScreen extends StatefulWidget {
   final ValueChanged<String> onToggleFavorite;
   final VoidCallback onNavigateToExplore;
   final String userName;
+  final String? userId;
 
   const BerandaScreen({
     super.key,
@@ -19,6 +22,7 @@ class BerandaScreen extends StatefulWidget {
     required this.onToggleFavorite,
     required this.onNavigateToExplore,
     this.userName = 'Tamu',
+    this.userId,
   });
 
   @override
@@ -27,11 +31,13 @@ class BerandaScreen extends StatefulWidget {
 
 class _BerandaScreenState extends State<BerandaScreen> {
   String _selectedCategory = 'Populer';
-  final List<String> _categories = ['Populer', 'Vegan', 'Pasta', 'Dessert', 'Seafood'];
 
   @override
   Widget build(BuildContext context) {
     final recommended = widget.recipes.take(3).toList();
+    final categories = ['Populer',
+      ...widget.recipes.map((recipe) => recipe.category).where((cat) => cat.isNotEmpty).toSet(),
+    ];
 
     // Filter berbasis data (berlaku untuk resep database maupun data contoh).
     late final List<Recipe> showcase;
@@ -41,35 +47,8 @@ class _BerandaScreenState extends State<BerandaScreen> {
         ..sort((a, b) => b.likesCount.compareTo(a.likesCount));
       showcase = byLikes.take(6).toList();
     } else {
-      showcase = widget.recipes.where((r) {
-        if (_selectedCategory == 'Vegan') {
-          return r.filterKey.contains('healthy') ||
-              r.filterKey.contains('diet') ||
-              r.category.toLowerCase().contains('asian');
-        }
-        if (_selectedCategory == 'Pasta') {
-          final title = r.title.toLowerCase();
-          return r.filterKey.contains('pasta') ||
-              title.contains('pasta') ||
-              title.contains('spaghetti') ||
-              title.contains('carbonara') ||
-              title.contains('fettuccine') ||
-              title.contains('linguine') ||
-              title.contains('penne');
-        }
-        if (_selectedCategory == 'Dessert') {
-          return r.category.toLowerCase().contains('dessert');
-        }
-        if (_selectedCategory == 'Seafood') {
-          final title = r.title.toLowerCase();
-          return title.contains('salmon') ||
-              title.contains('nasi lemak') ||
-              title.contains('udang') ||
-              title.contains('cumi') ||
-              title.contains('tuna');
-        }
-        return true;
-      }).toList();
+      showcase = widget.recipes.where((recipe) =>
+          recipe.category == _selectedCategory).toList();
     }
 
     return ListView(
@@ -114,26 +93,24 @@ class _BerandaScreenState extends State<BerandaScreen> {
                 Stack(
                   children: [
                     IconButton(
-                      onPressed: () => NotificationsSheet.show(context),
+                      onPressed: () => NotificationsSheet.show(context, uid: widget.userId),
                       icon: const Icon(Icons.notifications_outlined, size: 22),
                       style: IconButton.styleFrom(
                         backgroundColor: AppColors.surfaceContainer,
                         foregroundColor: AppColors.onSurface,
                       ),
                     ),
-                    Positioned(
-                      top: 10,
-                      right: 10,
-                      child: Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: AppColors.primary,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: AppColors.surface, width: 1.5),
-                        ),
+                    if (widget.userId != null && RecipeService.isReady)
+                      StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                        stream: RecipeService.watchNotifications(widget.userId!),
+                        builder: (context, snap) => snap.data?.docs.any(
+                            (doc) => doc.data()['seen'] != true) == true
+                            ? Positioned(top: 10, right: 10,
+                                child: Container(width: 8, height: 8,
+                                    decoration: const BoxDecoration(
+                                        color: AppColors.primary, shape: BoxShape.circle)))
+                            : const SizedBox.shrink(),
                       ),
-                    ),
                   ],
                 ),
               ],
@@ -151,7 +128,7 @@ class _BerandaScreenState extends State<BerandaScreen> {
                 children: [
                   Flexible(
                     child: Text(
-                      'Recommended for You',
+                      'Resep Terbaru',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.headlineMedium,
@@ -227,7 +204,7 @@ class _BerandaScreenState extends State<BerandaScreen> {
           scrollDirection: Axis.horizontal,
           clipBehavior: Clip.none,
           child: Row(
-            children: _categories.map((cat) {
+            children: categories.map((cat) {
               final isActive = _selectedCategory == cat;
               return Padding(
                 padding: const EdgeInsets.only(right: 8),

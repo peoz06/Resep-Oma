@@ -11,8 +11,6 @@ class UnggahResepScreen extends StatefulWidget {
   final Recipe? recipe;
   final VoidCallback onPublishRecipe;
   final String? userId;
-  final String userName;
-  final String? userAvatar;
   final ValueChanged<String>? onShowToast;
 
   const UnggahResepScreen({
@@ -20,8 +18,6 @@ class UnggahResepScreen extends StatefulWidget {
     this.recipe,
     required this.onPublishRecipe,
     this.userId,
-    this.userName = 'Anonim',
-    this.userAvatar,
     this.onShowToast,
   });
 
@@ -58,7 +54,10 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
   void initState() {
     super.initState();
     final recipe = widget.recipe;
-    if (recipe == null) return;
+    if (recipe == null) {
+      _restoreDraft();
+      return;
+    }
     _titleController.text = recipe.title;
     _descController.text = recipe.description;
     _timeController.text = recipe.time;
@@ -77,6 +76,66 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
     _steps
       ..clear()
       ..addAll(recipe.steps);
+  }
+
+  Future<void> _restoreDraft() async {
+    final uid = widget.userId;
+    if (uid == null || !RecipeService.isReady) return;
+    try {
+      final draft = await RecipeService.fetchDraft(uid);
+      if (!mounted || draft == null || widget.userId != uid ||
+          _titleController.text.isNotEmpty) {
+        return;
+      }
+      setState(() {
+        _titleController.text = draft['title'] as String? ?? '';
+        _descController.text = draft['description'] as String? ?? '';
+        _selectedCategory = draft['category'] as String? ?? '';
+        if (_selectedCategory.isNotEmpty && !_categories.contains(_selectedCategory)) {
+          _categories.add(_selectedCategory);
+        }
+        _timeController.text = draft['cookTime'] as String? ?? '';
+        _servingsController.text = draft['servings'] as String? ?? '';
+        final savedDifficulty = draft['difficulty'] as String?;
+        _difficulty = const ['Mudah', 'Sedang', 'Sulit'].contains(savedDifficulty)
+            ? savedDifficulty : null;
+        assert(_difficulty == null ||
+            const ['Mudah', 'Sedang', 'Sulit'].contains(_difficulty));
+        final ingredients = draft['ingredients'] as List? ?? [];
+        for (var i = 0; i < ingredients.length; i++) {
+          _ingredients.add(Ingredient.fromFirestore(
+              Map<String, dynamic>.from(ingredients[i] as Map), fallbackId: 'ing-$i'));
+        }
+        final steps = draft['steps'] as List? ?? [];
+        for (var i = 0; i < steps.length; i++) {
+          _steps.add(CookingStep.fromFirestore(
+              Map<String, dynamic>.from(steps[i] as Map), fallbackId: 'step-$i'));
+        }
+      });
+    } catch (_) {
+      if (mounted) widget.onShowToast?.call('Draf belum dapat dimuat.');
+    }
+  }
+
+  Future<void> _saveDraft() async {
+    final uid = widget.userId;
+    if (uid == null || _isPublishing) return;
+    setState(() => _isPublishing = true);
+    final result = await RecipeService.saveDraft(uid, {
+      'title': _titleController.text.trim(),
+      'description': _descController.text.trim(),
+      'category': _selectedCategory,
+      'cookTime': _timeController.text.trim(),
+      'servings': _servingsController.text.trim(),
+      'difficulty': _difficulty ?? '',
+      'ingredients': _ingredients.map((item) =>
+          {'name': item.name, 'amount': item.amount}).toList(),
+      'steps': _steps.map((item) =>
+          {'title': item.title, 'description': item.description}).toList(),
+    });
+    if (!mounted) return;
+    setState(() => _isPublishing = false);
+    widget.onShowToast?.call(result.message);
   }
 
   Future<void> _pickHeroPhoto() async {
@@ -295,6 +354,10 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
       widget.onShowToast?.call('Mohon isi nama resep terlebih dahulu');
       return;
     }
+    if (_titleController.text.trim().length > 60) {
+      widget.onShowToast?.call('Nama resep maksimal 60 karakter.');
+      return;
+    }
     if (_selectedCategory.isEmpty || _timeController.text.trim().isEmpty ||
         _servingsController.text.trim().isEmpty ||
         (_difficulty == null && widget.recipe == null) ||
@@ -343,8 +406,6 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
     final res = await RecipeService.saveRecipe(
       recipeId: widget.recipe?.id,
       authorId: widget.userId!,
-      authorName: widget.userName,
-      authorAvatar: widget.userAvatar,
       title: _titleController.text.trim(),
       description: _descController.text.trim(),
       category: _selectedCategory,
@@ -365,10 +426,15 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
     setState(() => _isPublishing = false);
 
     if (res.ok) {
+      final draftResult = widget.recipe == null
+          ? await RecipeService.deleteDraft(widget.userId!)
+          : const ServiceResult(ok: true);
+      if (!mounted) return;
       widget.onPublishRecipe();
       widget.onShowToast?.call(
         widget.recipe == null
-            ? 'Resep "${_titleController.text.trim()}" berhasil dipublikasikan ke database! (Kode: ${res.code ?? ''})'
+            ? 'Resep "${_titleController.text.trim()}" berhasil dipublikasikan! '
+              '(Kode: ${res.code ?? ''})${draftResult.ok ? '' : ' Draf belum dihapus: ${draftResult.message}'}'
             : 'Perubahan resep berhasil disimpan ke database.',
       );
       // Bersihkan form
@@ -544,32 +610,6 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
                         ),
                         child: const Icon(Icons.favorite,
                             color: AppColors.primary, size: 16),
-                      ),
-                    ),
-                    Positioned(
-                      bottom: -8,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.verified, color: Colors.white, size: 12),
-                            SizedBox(width: 4),
-                            Text(
-                              'Resolusi Tinggi',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
                       ),
                     ),
                   ],
@@ -763,6 +803,7 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
                           const SizedBox(height: 4),
                           const Text('Tingkat', style: TextStyle(color: AppColors.secondary, fontSize: 11)),
                           DropdownButtonFormField<String>(
+                            key: ValueKey(_difficulty),
                             initialValue: _difficulty,
                             isExpanded: true,
                             hint: Text(widget.recipe?.difficulty ?? 'Pilih',
@@ -1062,6 +1103,14 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
                   ],
                 ),
         ),
+        if (widget.recipe == null) ...[
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _isPublishing ? null : _saveDraft,
+            icon: const Icon(Icons.save_outlined),
+            label: const Text('Simpan draf (1 per akun; foto perlu dipilih lagi)'),
+          ),
+        ],
         const SizedBox(height: 20),
       ],
     );

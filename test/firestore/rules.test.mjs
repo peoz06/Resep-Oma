@@ -1,14 +1,14 @@
 import { readFile } from 'node:fs/promises';
 import { before, after, beforeEach, test } from 'node:test';
 import { assertFails, assertSucceeds, initializeTestEnvironment } from '@firebase/rules-unit-testing';
-import { collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, setDoc, updateDoc, where } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
 import assert from 'node:assert/strict';
 
 // Project demo dan host emulator wajib: tes ini tidak boleh menyentuh cloud.
 assert.ok(process.env.FIRESTORE_EMULATOR_HOST, 'Jalankan melalui firebase emulators:exec');
 let env;
 const recipe = (authorId = 'owner') => ({
-  title: 'Sup Ayam', authorId, authorName: 'Koki Publik', authorAvatar: '',
+  title: 'Sup Ayam', authorId, authorName: authorId, authorAvatar: '',
   image: 'https://example.com/sup.jpg', ingredients: [{ name: 'Ayam', amount: '500 g' }],
   steps: [{ title: 'Rebus', description: 'Rebus hingga matang.' }], likesCount: 3,
 });
@@ -71,7 +71,7 @@ test('User mengubah role/status sendiri: ditolak', async () => {
 });
 test('Registrasi profil akun baru: berhasil', async () => {
   await assertSucceeds(setDoc(at(signedIn('newUser'), 'users/newUser'), {
-    name: 'Baru', email: 'baru@example.com', role: 'user', status: 'active', pending: false,
+    name: 'newUser', email: 'baru@example.com', role: 'user', status: 'active', pending: false,
   }));
   await assertSucceeds(setDoc(at(signedIn('newUser'), 'recipes/new'), recipe('newUser')));
 });
@@ -179,4 +179,155 @@ test('Koleksi dan subkoleksi lain ditolak tanpa wildcard permisif', async () => 
     await assertFails(getDoc(at(db, 'unknown/doc')));
     await assertFails(getDoc(at(db, 'recipes/recipe1/private/doc')));
   }
+});
+
+test('Suka memerlukan transaksi penghitung; tamu dan akun lain tidak dapat memalsukan', async () => {
+  const db = signedIn('other');
+  await assertFails(updateDoc(at(db, 'recipes/recipe1'), { likesCount: 4 }));
+  await assertFails(setDoc(at(db, 'likes/other__recipe1'), {
+    uid: 'other', recipeId: 'recipe1', createdAt: serverTimestamp(),
+  }));
+  const batch = writeBatch(db);
+  batch.update(at(db, 'recipes/recipe1'), { likesCount: 4 });
+  batch.set(at(db, 'likes/other__recipe1'), {
+    uid: 'other', recipeId: 'recipe1', createdAt: serverTimestamp(),
+  });
+  batch.set(at(db, 'notifications/like-other__recipe1'), {
+    recipientId: 'owner', actorId: 'other', recipeId: 'recipe1',
+    kind: 'like', title: 'Sup Ayam', seen: false, createdAt: serverTimestamp(),
+  });
+  await assertSucceeds(batch.commit());
+  assert.equal((await getDoc(at(db, 'recipes/recipe1'))).data().likesCount, 4);
+  await assertFails(getDoc(at(signedIn('owner'), 'likes/other__recipe1')));
+  await assertSucceeds(getDoc(at(signedIn('owner'), 'notifications/like-other__recipe1')));
+  await assertFails(getDoc(at(signedIn('admin'), 'notifications/like-other__recipe1')));
+  await assertFails(updateDoc(at(db, 'notifications/like-other__recipe1'), { seen: true }));
+  await assertSucceeds(updateDoc(at(signedIn('owner'), 'notifications/like-other__recipe1'), { seen: true }));
+  const undo = writeBatch(db);
+  undo.update(at(db, 'recipes/recipe1'), { likesCount: 3 });
+  undo.delete(at(db, 'likes/other__recipe1'));
+  await assertSucceeds(undo.commit());
+});
+
+test('Recook hanya sekali per akun dan angka tidak bisa dinaikkan sendiri', async () => {
+  const db = signedIn('other');
+  await assertFails(updateDoc(at(db, 'recipes/recipe1'), { recooksCount: 1 }));
+  const batch = writeBatch(db);
+  batch.update(at(db, 'recipes/recipe1'), { recooksCount: 1 });
+  batch.set(at(db, 'recooks/other__recipe1'), {
+    uid: 'other', recipeId: 'recipe1', createdAt: serverTimestamp(),
+  });
+  batch.set(at(db, 'notifications/recook-other__recipe1'), {
+    recipientId: 'owner', actorId: 'other', recipeId: 'recipe1',
+    kind: 'recook', title: 'Sup Ayam', seen: false, createdAt: serverTimestamp(),
+  });
+  await assertSucceeds(batch.commit());
+  await assertFails(setDoc(at(db, 'recooks/other__recipe1'), {
+    uid: 'other', recipeId: 'recipe1', createdAt: serverTimestamp(),
+  }));
+  await assertFails(deleteDoc(at(db, 'recooks/other__recipe1')));
+});
+
+test('Ulasan membuat notifikasi nyata untuk pemilik resep saja', async () => {
+  const db = signedIn('other');
+  const batch = writeBatch(db);
+  batch.set(at(db, 'recipes/recipe1/comments/other__recipe1'), {
+    authorId: 'other', authorName: 'other', text: 'Enak', rating: 4,
+    createdAt: serverTimestamp(),
+  });
+  batch.set(at(db, 'notifications/comment-other__recipe1'), {
+    recipientId: 'owner', actorId: 'other', recipeId: 'recipe1',
+    eventId: 'other__recipe1', kind: 'comment', title: 'Sup Ayam',
+    seen: false, createdAt: serverTimestamp(),
+  });
+  await assertSucceeds(batch.commit());
+  await assertSucceeds(getDocs(query(collection(signedIn('owner'), 'notifications'),
+    where('recipientId', '==', 'owner'))));
+  await assertFails(getDocs(query(collection(signedIn('admin'), 'notifications'),
+    where('recipientId', '==', 'owner'))));
+  await assertFails(setDoc(at(db, 'notifications/comment-fake'), {
+    recipientId: 'owner', actorId: 'other', recipeId: 'recipe1',
+    eventId: 'fake', kind: 'comment', title: 'Sup Ayam',
+    seen: false, createdAt: serverTimestamp(),
+  }));
+});
+
+test('Ulasan & rating publik, identitas penulis dan nilai tidak bisa dipalsukan', async () => {
+  const path = 'recipes/recipe1/comments/other__recipe1';
+  await assertSucceeds(setDoc(at(signedIn('other'), path), {
+    authorId: 'other', authorName: 'other', text: 'Enak', rating: 5,
+    createdAt: serverTimestamp(),
+  }));
+  await assertSucceeds(getDocs(collection(guest(), 'recipes/recipe1/comments')));
+  await assertSucceeds(updateDoc(at(signedIn('other'), path), { text: 'Lebih enak', rating: 4 }));
+  await assertFails(setDoc(at(signedIn('other'), 'recipes/recipe1/comments/spam'), {
+    authorId: 'other', authorName: 'other', text: 'Spam', rating: 5,
+    createdAt: serverTimestamp(),
+  }));
+  await assertFails(updateDoc(at(signedIn('owner'), path), { rating: 1 }));
+  await assertFails(updateDoc(at(signedIn('other'), path), { authorId: 'owner' }));
+  await assertFails(setDoc(at(signedIn('owner'), 'recipes/recipe1/comments/owner__recipe1'), {
+    authorId: 'other', authorName: 'Palsu', text: 'Spam', rating: 9,
+    createdAt: serverTimestamp(),
+  }));
+  await assertFails(deleteDoc(at(guest(), path)));
+  await assertSucceeds(deleteDoc(at(signedIn('other'), path)));
+});
+
+test('Ikuti hanya akun aktif; hitungan pengikut dapat dibaca pemilik akun', async () => {
+  const db = signedIn('other');
+  const path = 'follows/other__owner';
+  await assertSucceeds(setDoc(at(db, path), {
+    followerId: 'other', followingId: 'owner', createdAt: serverTimestamp(),
+  }));
+  await assertSucceeds(getDocs(query(collection(signedIn('owner'), 'follows'),
+    where('followingId', '==', 'owner'))));
+  await assertFails(getDoc(at(signedIn('admin'), path)));
+  await assertFails(setDoc(at(signedIn('banned'), 'follows/banned__owner'), {
+    followerId: 'banned', followingId: 'owner', createdAt: serverTimestamp(),
+  }));
+  await assertFails(setDoc(at(db, 'follows/other__other'), {
+    followerId: 'other', followingId: 'other', createdAt: serverTimestamp(),
+  }));
+  await assertSucceeds(deleteDoc(at(db, path)));
+});
+
+test('Draf hanya dapat dibaca dan diedit pemilik aktif', async () => {
+  const data = {
+    uid: 'owner', title: 'Sup belum selesai', description: '', category: '',
+    cookTime: '', servings: '', difficulty: '', ingredients: [], steps: [],
+    updatedAt: serverTimestamp(),
+  };
+  await assertSucceeds(setDoc(at(signedIn('owner'), 'drafts/owner'), data));
+  await assertSucceeds(getDoc(at(signedIn('owner'), 'drafts/owner')));
+  await assertFails(getDoc(at(signedIn('other'), 'drafts/owner')));
+  await assertFails(getDoc(at(guest(), 'drafts/owner')));
+  await assertFails(setDoc(at(signedIn('suspended'), 'drafts/suspended'), { ...data, uid: 'suspended' }));
+  await assertFails(setDoc(at(signedIn('owner'), 'drafts/owner'), { ...data, image: 'file:///private/photo' }));
+  await assertSucceeds(deleteDoc(at(signedIn('owner'), 'drafts/owner')));
+});
+
+test('Nama penulis resep/ulasan tidak bisa dipalsukan; profil baru dapat disinkronkan', async () => {
+  const db = signedIn('owner');
+  await assertFails(setDoc(at(db, 'recipes/fakeAuthor'), {
+    ...recipe('owner'), authorName: 'Admin Palsu',
+  }));
+  await assertFails(setDoc(at(db, 'recipes/recipe1/comments/owner__recipe1'), {
+    authorId: 'owner', authorName: 'Admin Palsu', text: 'Hebat', rating: 5,
+    createdAt: serverTimestamp(),
+  }));
+  await assertFails(updateDoc(at(db, 'recipes/recipe1'), { authorName: 'Admin Palsu' }));
+  await assertSucceeds(updateDoc(at(db, 'users/owner'), { name: 'Oma Baru' }));
+  await assertSucceeds(updateDoc(at(db, 'recipes/recipe1'), {
+    authorName: 'Oma Baru', authorAvatar: null, updatedAt: serverTimestamp(),
+  }));
+  await assertFails(updateDoc(at(db, 'recipes/recipe1'), { authorName: 'Admin Palsu' }));
+});
+
+test('Hanya admin aktif dapat mengubah role orang lain dan verifikasi resep', async () => {
+  await assertFails(updateDoc(at(signedIn('owner'), 'users/other'), { role: 'admin' }));
+  await assertSucceeds(updateDoc(at(signedIn('admin'), 'users/other'), { role: 'creator' }));
+  await assertFails(updateDoc(at(signedIn('owner'), 'recipes/recipe1'), { verified: true }));
+  await assertSucceeds(updateDoc(at(signedIn('admin'), 'recipes/recipe1'), { verified: true }));
+  await assertFails(updateDoc(at(signedIn('suspendedAdmin'), 'recipes/recipe1'), { verified: false }));
 });

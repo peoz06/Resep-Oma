@@ -38,11 +38,31 @@ Panduan lanjutan:
 - [Moderasi, aturan akses, dan tes Firestore](MODERASI_FIREBASE.md)
 - [Konfigurasi Firebase per platform](FIREBASE_MIGRATION_GUIDE.md)
 
+## Fitur aplikasi Flutter
+
+- Resep publik: cari/filter, unggah/edit/hapus, galeri, draf teks (satu per akun;
+  foto harus dipilih ulang), favorit, suka dan recook sekali per akun.
+- Ulasan dan rating 1–5, ikuti koki, salin ringkasan resep untuk dibagikan,
+  notifikasi aktivitas (suka/recook/ulasan) dalam aplikasi.
+- Admin: laporan, status dan role pengguna, serta verifikasi resep. Admin
+  pertama tetap dibuat lewat Firebase Console.
+- Daftar/login, pemulihan sandi, email verifikasi, profil, tema gelap, mode tamu.
+
+Pemilik project menyatakan `firestore.rules` terbaru sudah dipublikasikan di
+Firebase Console. Akses baca resep tanpa login sudah diuji pada project nyata;
+tes emulator untuk aturan lain tetap dapat dijalankan:
+
+```bash
+firebase emulators:exec --only firestore --project demo-resep-oma "npm --prefix test/firestore test"
+```
+
+Firebase CLI terbaru memerlukan Java 21 untuk emulator.
+
 ## Firestore dan akun admin
 
-Rules Firestore **sudah live** sesuai `firestore.rules`, berdasarkan konfirmasi
-pemilik project yang menerapkannya melalui Firebase Console. Commit atau pull
-repository tidak melakukan deploy rules. Agent tidak memverifikasi Console langsung.
+Rules terbaru sudah dipublikasikan menurut pemilik project. Pembacaan resep
+tanpa login dan penolakan baca profil tanpa login sudah diuji; aturan produksi
+lain belum diverifikasi langsung. Commit atau pull tidak men-deploy rules.
 
 Akun admin pertama harus diatur manual di **Firestore Console**. Setelah akun
 terdaftar melalui Firebase Auth, gunakan dokumen `users/<UID Auth>` dengan
@@ -73,7 +93,14 @@ Tes rules emulator beserta prasyarat Node/Java dijelaskan di
   dipanggil di luar aplikasi.
 - Foto lama atau file yang berhasil diunggah saat penyimpanan Firestore gagal
   tidak dihapus otomatis. Pembersihan dilakukan manual oleh pemilik project.
-- Hindari mengganti akun saat upload avatar berjalan; pengikatan penyimpanan
-  hasil upload ke UID awal belum diperbaiki.
+- Upload avatar yang selesai setelah pergantian akun tidak dipasang ke akun
+  baru; file yang sempat diunggah tetap harus dibersihkan manual.
+- Penghapusan akun beserta seluruh data dan foto, penghapusan otomatis file
+  Supabase, serta pagination katalog belum tersedia; perlu backend tepercaya.
+- Verifikasi email tersedia, tetapi akun lama yang belum diverifikasi belum
+  ditolak otomatis. Perubahan email baru tercermin pada profil setelah tautan
+  dikonfirmasi dan sesi berikutnya memuat ulang profil.
+- AI berbasis Gemini, login Apple, pencarian suara, Firebase Linux, dan edit
+  resep orang lain oleh admin sengaja tidak diubah.
 - Tes lokal tidak membuktikan upload bucket live, login email/Google nyata,
   logout otomatis dua sesi Flutter, atau build seluruh platform.

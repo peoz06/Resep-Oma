@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/recipe_model.dart';
 import '../services/recipe_service.dart';
 import '../theme/app_theme.dart';
@@ -6,10 +7,11 @@ import 'app_cached_image.dart';
 
 class RecipeDetailSheet extends StatefulWidget {
   final Recipe recipe;
-  final VoidCallback onToggleFavorite;
+  final Future<bool?> Function() onToggleFavorite;
   final ValueChanged<String>? onShowToast;
   final String? currentUserId;
   final String? currentUserName;
+  final VoidCallback? onRecipeChanged;
 
   const RecipeDetailSheet({
     super.key,
@@ -18,15 +20,17 @@ class RecipeDetailSheet extends StatefulWidget {
     this.onShowToast,
     this.currentUserId,
     this.currentUserName,
+    this.onRecipeChanged,
   });
 
   static void show(
     BuildContext context, {
     required Recipe recipe,
-    required VoidCallback onToggleFavorite,
+    required Future<bool?> Function() onToggleFavorite,
     ValueChanged<String>? onShowToast,
     String? currentUserId,
     String? currentUserName,
+    VoidCallback? onRecipeChanged,
   }) {
     showModalBottomSheet(
       context: context,
@@ -38,6 +42,7 @@ class RecipeDetailSheet extends StatefulWidget {
         onShowToast: onShowToast,
         currentUserId: currentUserId,
         currentUserName: currentUserName,
+        onRecipeChanged: onRecipeChanged,
       ),
     );
   }
@@ -49,11 +54,127 @@ class RecipeDetailSheet extends StatefulWidget {
 class _RecipeDetailSheetState extends State<RecipeDetailSheet> {
   final Set<String> _checkedIngredients = {};
   bool _submittingReport = false;
+  bool _working = false;
+  bool? _following;
+  late Future<List<Map<String, dynamic>>> _comments;
 
-  void _reportDialog() {
+  @override
+  void initState() {
+    super.initState();
+    _comments = RecipeService.fetchComments(widget.recipe.id);
+    final uid = widget.currentUserId;
+    if (uid != null && widget.recipe.authorId.isNotEmpty &&
+        uid != widget.recipe.authorId) {
+      RecipeService.isFollowing(uid, widget.recipe.authorId).then((value) {
+        if (mounted) setState(() => _following = value);
+      }).catchError((Object _) {});
+    }
+  }
+
+  Future<void> _toggleLike() async {
+    final uid = widget.currentUserId;
+    if (uid == null) {
+      widget.onShowToast?.call('Masuk akun untuk menyukai resep.');
+      return;
+    }
+    if (_working) return;
+    setState(() => _working = true);
+    final liked = await RecipeService.toggleLike(uid, widget.recipe.id);
+    if (!mounted) return;
+    setState(() {
+      _working = false;
+      if (liked != null) widget.recipe.isLiked = liked;
+    });
+    if (liked == null) {
+      widget.onShowToast?.call('Gagal memperbarui suka. Periksa koneksi.');
+    } else {
+      widget.onRecipeChanged?.call();
+    }
+  }
+
+  Future<void> _markRecook() async {
+    final uid = widget.currentUserId;
+    if (uid == null) {
+      widget.onShowToast?.call('Masuk akun untuk menandai recook.');
+      return;
+    }
+    if (_working) return;
+    setState(() => _working = true);
+    final result = await RecipeService.markRecook(uid, widget.recipe.id);
+    if (!mounted) return;
+    setState(() => _working = false);
+    if (result.ok) {
+      widget.onRecipeChanged?.call();
+    }
+    widget.onShowToast?.call(result.message);
+  }
+
+  Future<void> _toggleFollow() async {
+    final uid = widget.currentUserId;
+    if (uid == null) {
+      widget.onShowToast?.call('Masuk akun untuk mengikuti koki.');
+      return;
+    }
+    if (_working) return;
+    setState(() => _working = true);
+    final following = await RecipeService.toggleFollow(uid, widget.recipe.authorId);
+    if (!mounted) return;
+    setState(() {
+      _working = false;
+      if (following != null) _following = following;
+    });
+    widget.onShowToast?.call(following == null
+        ? 'Gagal memperbarui daftar koki yang diikuti.'
+        : following ? 'Koki diikuti.' : 'Berhenti mengikuti koki.');
+  }
+
+  Future<void> _writeReview() async {
+    if (widget.currentUserId == null) {
+      widget.onShowToast?.call('Masuk akun untuk menulis ulasan.');
+      return;
+    }
+    final text = TextEditingController();
+    var rating = 5;
+    final input = await showDialog<(String, int)>(
+      context: context,
+      builder: (dialog) => StatefulBuilder(
+        builder: (dialog, update) => AlertDialog(
+          title: const Text('Tulis Ulasan'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            Wrap(children: [for (var star = 1; star <= 5; star++)
+              IconButton(
+                tooltip: '$star bintang',
+                onPressed: () => update(() => rating = star),
+                icon: Icon(star <= rating ? Icons.star : Icons.star_border,
+                    color: AppColors.primary),
+              )]),
+            TextField(controller: text, maxLength: 500, maxLines: 3,
+                decoration: const InputDecoration(labelText: 'Ulasan resep')),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialog), child: const Text('Batal')),
+            TextButton(onPressed: () {
+              if (text.text.trim().isNotEmpty) Navigator.pop(dialog, (text.text.trim(), rating));
+            }, child: const Text('Kirim')),
+          ],
+        ),
+      ),
+    );
+    text.dispose();
+    if (input == null || !mounted) return;
+    final result = await RecipeService.addComment(
+      uid: widget.currentUserId!, recipeId: widget.recipe.id,
+      text: input.$1, rating: input.$2,
+    );
+    if (!mounted) return;
+    widget.onShowToast?.call(result.message);
+    if (result.ok) setState(() => _comments = RecipeService.fetchComments(widget.recipe.id));
+  }
+
+  Future<void> _reportDialog() async {
     final reasonCtrl = TextEditingController();
 
-    showDialog(
+    await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Laporkan Resep', style: TextStyle(fontSize: 16)),
@@ -89,6 +210,7 @@ class _RecipeDetailSheetState extends State<RecipeDetailSheet> {
             onPressed: _submittingReport
                 ? null
                 : () async {
+                    if (_submittingReport) return;
                     final reason = reasonCtrl.text.trim();
                     if (reason.isEmpty) {
                       widget.onShowToast?.call('Mohon isi alasan laporan.');
@@ -112,7 +234,6 @@ class _RecipeDetailSheetState extends State<RecipeDetailSheet> {
 
                     final res = await RecipeService.submitReport(
                       reporterId: widget.currentUserId!,
-                      reporterName: widget.currentUserName ?? 'Anonim',
                       recipeId: widget.recipe.id,
                       recipeTitle: widget.recipe.title,
                       reason: reason,
@@ -143,6 +264,7 @@ class _RecipeDetailSheetState extends State<RecipeDetailSheet> {
         ],
       ),
     );
+    reasonCtrl.dispose();
   }
 
   @override
@@ -209,17 +331,38 @@ class _RecipeDetailSheetState extends State<RecipeDetailSheet> {
                           ),
                         ),
                         IconButton(
-                          onPressed: () {
-                            widget.onToggleFavorite();
-                            setState(() {});
+                          onPressed: () async {
+                            final favorite = await widget.onToggleFavorite();
+                            if (mounted && favorite != null) {
+                              setState(() => recipe.isFavorite = favorite);
+                            }
                           },
                           icon: Icon(
                             recipe.isFavorite ? Icons.favorite : Icons.favorite_border,
                             color: recipe.isFavorite ? const Color(0xFFFF4D6D) : Colors.white,
                           ),
+                          tooltip: 'Simpan ke favorit',
                           style: IconButton.styleFrom(
                             backgroundColor: Colors.white12,
                           ),
+                        ),
+                        IconButton(
+                          onPressed: _working ? null : _toggleLike,
+                          icon: Icon(recipe.isLiked ? Icons.thumb_up : Icons.thumb_up_outlined,
+                              color: recipe.isLiked ? AppColors.primaryFixedDim : Colors.white),
+                          tooltip: 'Suka',
+                        ),
+                        IconButton(
+                          onPressed: () async {
+                            await Clipboard.setData(ClipboardData(
+                              text: '${recipe.title} — oleh ${recipe.author}\n'
+                                  'Bahan: ${recipe.ingredients.map((i) => '${i.name} ${i.amount}').join(', ')}\n'
+                                  'Kode resep: ${recipe.code}',
+                            ));
+                            widget.onShowToast?.call('Ringkasan resep disalin. Siap dibagikan.');
+                          },
+                          icon: const Icon(Icons.share_outlined, color: Colors.white),
+                          tooltip: 'Salin untuk dibagikan',
                         ),
                       ],
                     ),
@@ -263,11 +406,24 @@ class _RecipeDetailSheetState extends State<RecipeDetailSheet> {
                             fontWeight: FontWeight.bold,
                           ),
                     ),
+                    if (recipe.verified)
+                      const Text('✓ Terverifikasi oleh admin',
+                          style: TextStyle(color: AppColors.primaryFixedDim,
+                              fontSize: 12, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 4),
                     Text(
                       'oleh ${recipe.author} • ${recipe.publishedAgo}',
                       style: const TextStyle(color: Colors.white70, fontSize: 13),
                     ),
+                    if (widget.currentUserId != recipe.authorId &&
+                        recipe.authorId.isNotEmpty)
+                      TextButton.icon(
+                        onPressed: _working ? null : _toggleFollow,
+                        icon: Icon(_following == true ? Icons.person_remove : Icons.person_add,
+                            color: Colors.white),
+                        label: Text(_following == true ? 'Mengikuti' : 'Ikuti koki',
+                            style: const TextStyle(color: Colors.white)),
+                      ),
                     const SizedBox(height: 16),
 
                     // Quick Triple Metric Bar
@@ -298,6 +454,19 @@ class _RecipeDetailSheetState extends State<RecipeDetailSheet> {
                             height: 1.5,
                           ),
                     ),
+                    if (recipe.secondaryImages?.isNotEmpty == true) ...[
+                      const SizedBox(height: 12),
+                      SizedBox(height: 100, child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: recipe.secondaryImages!.length,
+                        separatorBuilder: (_, index) => const SizedBox(width: 8),
+                        itemBuilder: (context, index) => AppCachedImage(
+                          imageUrl: recipe.secondaryImages![index],
+                          width: 100, height: 100,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      )),
+                    ],
                     const SizedBox(height: 20),
 
                     // Ingredients Card
@@ -515,13 +684,10 @@ class _RecipeDetailSheetState extends State<RecipeDetailSheet> {
 
                     // Cook & Recook Action CTA
                     ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        widget.onShowToast?.call('Selamat memasak! Recook Anda telah dicatat.');
-                      },
+                      onPressed: _working ? null : _markRecook,
                       icon: const Icon(Icons.soup_kitchen, color: Colors.white),
                       label: const Text(
-                        'Mulai Masak & Tandai Recook',
+                        'Tandai sudah memasak (Recook)',
                         style: TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
@@ -538,6 +704,52 @@ class _RecipeDetailSheetState extends State<RecipeDetailSheet> {
                       ),
                     ),
                     const SizedBox(height: 20),
+
+                    Row(children: [
+                      Expanded(child: Text('Ulasan & Rating',
+                          style: Theme.of(context).textTheme.headlineSmall)),
+                      TextButton.icon(onPressed: _writeReview,
+                          icon: const Icon(Icons.rate_review_outlined),
+                          label: const Text('Tulis ulasan')),
+                    ]),
+                    FutureBuilder<List<Map<String, dynamic>>>(
+                      future: _comments,
+                      builder: (context, snapshot) {
+                        if (!snapshot.hasData) {
+                          return Text(snapshot.hasError
+                              ? 'Gagal memuat ulasan.' : 'Memuat ulasan...');
+                        }
+                        final comments = snapshot.data!;
+                        if (comments.isEmpty) {
+                          return const Text('Belum ada ulasan.');
+                        }
+                        final average = comments.fold<int>(0, (n, item) =>
+                            n + (item['rating'] as num).toInt()) / comments.length;
+                        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text('★ ${average.toStringAsFixed(1)} / 5 • ${comments.length} ulasan'),
+                          for (final item in comments) ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text('${item['authorName']} • ${item['rating']} ★'),
+                            subtitle: Text('${item['text']}'),
+                            trailing: item['authorId'] == widget.currentUserId
+                                ? IconButton(tooltip: 'Hapus ulasan',
+                                    onPressed: () async {
+                                      final result = await RecipeService.deleteComment(
+                                          widget.recipe.id, item['id'] as String);
+                                      if (!mounted) return;
+                                      widget.onShowToast?.call(result.message);
+                                      if (result.ok) {
+                                        setState(() => _comments =
+                                            RecipeService.fetchComments(widget.recipe.id));
+                                      }
+                                    },
+                                    icon: const Icon(Icons.delete_outline))
+                                : null,
+                          ),
+                        ]);
+                      },
+                    ),
+                    const SizedBox(height: 16),
 
                     // Report Recipe Link
                     TextButton.icon(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/recipe_model.dart';
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
+import '../services/recipe_service.dart';
 import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_cached_image.dart';
@@ -23,6 +24,8 @@ class ProfilScreen extends StatefulWidget {
   final String userEmail;
   final String? userAvatar;
   final ValueChanged<String>? onShowToast;
+  final bool darkMode;
+  final ValueChanged<bool>? onToggleDarkMode;
 
   /// (nama, email, profil Firestore hasil penyimpanan — null bila tamu)
   final void Function(String name, String email, AppUser? updatedUser)?
@@ -47,6 +50,8 @@ class ProfilScreen extends StatefulWidget {
     this.userAvatar,
     this.onUpdateProfile,
     this.onShowToast,
+    this.darkMode = false,
+    this.onToggleDarkMode,
   });
 
   @override
@@ -56,7 +61,6 @@ class ProfilScreen extends StatefulWidget {
 class _ProfilScreenState extends State<ProfilScreen> {
   late String _name;
   late String _email;
-  late String _handle;
   bool _sortLatest = true;
 
   @override
@@ -64,9 +68,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
     super.initState();
     _name = widget.isLoggedIn ? widget.userName : 'Pengguna Tamu';
     _email = widget.isLoggedIn ? widget.userEmail : 'Belum masuk akun';
-    _handle = widget.isLoggedIn
-        ? '@${widget.userName.toLowerCase().replaceAll(' ', '')}'
-        : 'Mode Tamu';
   }
 
   @override
@@ -77,9 +78,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
         widget.userEmail != oldWidget.userEmail) {
       _name = widget.isLoggedIn ? widget.userName : 'Pengguna Tamu';
       _email = widget.isLoggedIn ? widget.userEmail : 'Belum masuk akun';
-      _handle = widget.isLoggedIn
-          ? '@${widget.userName.toLowerCase().replaceAll(' ', '')}'
-          : 'Mode Tamu';
     }
   }
 
@@ -91,6 +89,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
     }
     final file = await StorageService.pickImage();
     if (file == null || !mounted) return;
+    final uid = widget.userId!;
 
     widget.onShowToast?.call('Mengunggah foto profil...');
     late final String url;
@@ -98,15 +97,22 @@ class _ProfilScreenState extends State<ProfilScreen> {
       url = await StorageService.uploadImage(
         file,
         bucket: 'avatars',
-        uid: widget.userId!,
+        uid: uid,
       );
     } on ImageUploadException catch (e) {
       if (mounted) widget.onShowToast?.call(e.message);
       return;
     }
 
-    final res = await AuthService.updateProfile(avatar: url);
     if (!mounted) return;
+    if (uid != widget.userId || uid != AuthService.firebaseUser?.uid) {
+      widget.onShowToast?.call('Akun berubah saat upload. Foto tidak dipasang; hapus file lama secara manual.');
+      return;
+    }
+    final res = await AuthService.updateProfile(avatar: url);
+    if (!mounted || uid != widget.userId || uid != AuthService.firebaseUser?.uid) {
+      return;
+    }
     if (!res.ok || res.user == null) {
       widget.onShowToast?.call(
         'Foto sudah terunggah ke Supabase, tetapi profil gagal disimpan ke Firestore. '
@@ -115,13 +121,13 @@ class _ProfilScreenState extends State<ProfilScreen> {
       return;
     }
     widget.onUpdateProfile?.call(res.user!.name, res.user!.email, res.user);
-    widget.onShowToast?.call('Foto profil berhasil diperbarui.');
+    widget.onShowToast?.call(res.message.contains('resep lama')
+        ? res.message : 'Foto profil berhasil diperbarui.');
   }
 
   void _editProfileDialog() {
     final nameCtrl = TextEditingController(text: _name);
     final emailCtrl = TextEditingController(text: _email);
-    final handleCtrl = TextEditingController(text: _handle);
     bool saving = false;
 
     showDialog(
@@ -139,10 +145,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
               TextField(
                   controller: emailCtrl,
                   decoration: const InputDecoration(labelText: 'Email')),
-              const SizedBox(height: 10),
-              TextField(
-                  controller: handleCtrl,
-                  decoration: const InputDecoration(labelText: 'Username')),
               if (widget.isLoggedIn)
                 TextButton(
                   onPressed: () {
@@ -167,20 +169,23 @@ class _ProfilScreenState extends State<ProfilScreen> {
                       final newEmail = emailCtrl.text.trim().isEmpty
                           ? _email
                           : emailCtrl.text.trim();
-                      final newHandle = handleCtrl.text.trim().isEmpty
-                          ? _handle
-                          : handleCtrl.text.trim();
 
-                      AppUser? savedUser;
+                       AppUser? savedUser;
+                       String? savedMessage;
 
-                      // Simpan ke Firestore (jika user sudah login)
-                      if (widget.isLoggedIn && widget.userId != null) {
-                        setDialogState(() => saving = true);
-                        final res = await AuthService.updateProfile(
-                          name: newName,
-                          email: newEmail,
-                        );
-                        if (!context.mounted) return;
+                       // Simpan ke Firestore (jika user sudah login)
+                       if (widget.isLoggedIn && widget.userId != null) {
+                         final uid = widget.userId;
+                         setDialogState(() => saving = true);
+                         final res = await AuthService.updateProfile(
+                           name: newName,
+                           email: newEmail,
+                         );
+                         if (!mounted || !context.mounted ||
+                             uid != widget.userId ||
+                             uid != AuthService.firebaseUser?.uid) {
+                           return;
+                         }
                         if (!res.ok) {
                           setDialogState(() => saving = false);
                           widget.onShowToast?.call(
@@ -190,20 +195,20 @@ class _ProfilScreenState extends State<ProfilScreen> {
                           );
                           return;
                         }
-                        savedUser = res.user;
+                         savedUser = res.user;
+                         savedMessage = res.message;
                       }
 
-                      setState(() {
-                        _name = newName;
-                        _email = newEmail;
-                        _handle = newHandle;
-                      });
-                      if (context.mounted) Navigator.pop(context);
-                      widget.onUpdateProfile
-                          ?.call(newName, newEmail, savedUser);
-                      widget.onShowToast?.call(
-                        widget.isLoggedIn
-                            ? 'Profil berhasil disimpan ke database!'
+                       setState(() {
+                         _name = savedUser?.name ?? newName;
+                         _email = savedUser?.email ?? newEmail;
+                       });
+                       if (context.mounted) Navigator.pop(context);
+                       widget.onUpdateProfile
+                           ?.call(_name, _email, savedUser);
+                       widget.onShowToast?.call(
+                         widget.isLoggedIn
+                             ? savedMessage ?? 'Profil berhasil disimpan ke database!'
                             : 'Nama berhasil diubah menjadi "$newName" (mode tamu, tidak tersimpan).',
                       );
                     },
@@ -296,15 +301,12 @@ class _ProfilScreenState extends State<ProfilScreen> {
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    AppCachedImage(
-                      imageUrl: (widget.userAvatar != null &&
-                              widget.userAvatar!.isNotEmpty)
-                          ? widget.userAvatar!
-                          : MockImages.annaRobertsAvatar,
-                      width: 72,
-                      height: 72,
-                      isCircle: true,
-                    ),
+                    widget.userAvatar?.isNotEmpty == true
+                        ? AppCachedImage(
+                            imageUrl: widget.userAvatar!, width: 72,
+                            height: 72, isCircle: true)
+                        : const CircleAvatar(radius: 36,
+                            child: Icon(Icons.person_outline, size: 36)),
                     Positioned(
                       right: -2,
                       bottom: -2,
@@ -344,9 +346,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
                   Text(_email,
                       style: const TextStyle(
                           color: AppColors.onSurfaceVariant, fontSize: 13)),
-                  Text(_handle,
-                      style: const TextStyle(
-                          color: AppColors.secondary, fontSize: 12)),
                 ],
               ),
             ),
@@ -378,43 +377,24 @@ class _ProfilScreenState extends State<ProfilScreen> {
             ),
           )
         else
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: widget.onLogin,
-                  icon: const Icon(Icons.login, size: 18),
-                  label: const Text('Masuk / Daftar',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16)),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              OutlinedButton.icon(
-                onPressed: _editProfileDialog,
-                icon: const Icon(Icons.edit,
-                    size: 16, color: AppColors.onSurface),
-                label: const Text('Ganti Nama',
-                    style: TextStyle(
-                        color: AppColors.onSurface,
-                        fontWeight: FontWeight.bold)),
-                style: OutlinedButton.styleFrom(
-                  backgroundColor: AppColors.surfaceContainerHigh,
-                  side: BorderSide.none,
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16)),
-                ),
-              ),
-            ],
+          ElevatedButton.icon(
+            onPressed: widget.onLogin,
+            icon: const Icon(Icons.login, size: 18),
+            label: const Text('Masuk / Daftar'),
+        ),
+        if (widget.isLoggedIn && widget.userId != null &&
+            AuthService.firebaseUser?.emailVerified == false) ...[
+          const SizedBox(height: 8),
+          ListTile(
+            title: const Text('Email belum terverifikasi'),
+            subtitle: Text(widget.userEmail),
+            trailing: TextButton(onPressed: () async {
+              final result = await AuthService.sendVerificationEmail();
+              widget.onShowToast?.call(result.message);
+              if (mounted) setState(() {});
+            }, child: const Text('Kirim tautan')),
           ),
+        ],
         const SizedBox(height: 14),
 
         // Stats Box
@@ -441,9 +421,54 @@ class _ProfilScreenState extends State<ProfilScreen> {
               const Text('Resep Saya',
                   style: TextStyle(
                       color: AppColors.onSurfaceVariant, fontSize: 12)),
+              if (widget.isLoggedIn)
+                Text('${myRecipes.fold<int>(0, (total, recipe) => total + recipe.likesCount)} suka',
+                    style: const TextStyle(color: AppColors.onSurfaceVariant, fontSize: 12)),
             ],
           ),
         ),
+        if (widget.isLoggedIn && widget.userId != null && RecipeService.isReady)
+          FutureBuilder<(int, int)>(
+            future: RecipeService.followCounts(widget.userId!),
+            builder: (context, snap) => snap.hasData
+                ? Padding(padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text('${snap.data!.$1} pengikut • ${snap.data!.$2} mengikuti',
+                        textAlign: TextAlign.center))
+                : const SizedBox.shrink(),
+          ),
+        if (widget.isLoggedIn && widget.userId != null && RecipeService.isReady)
+          FutureBuilder<Map<String, dynamic>?>(
+            future: RecipeService.fetchDraft(widget.userId!),
+            builder: (context, snap) => snap.hasData && snap.data != null
+                ? Card(child: ListTile(
+                    title: Text('Draf: ${snap.data!['title']}'),
+                    subtitle: const Text('Foto perlu dipilih ulang sebelum terbit.'),
+                    onTap: widget.onNavigateToUpload,
+                    trailing: IconButton(tooltip: 'Hapus draf',
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: () async {
+                        final confirmed = await showDialog<bool>(context: context,
+                          builder: (dialog) => AlertDialog(
+                            title: const Text('Hapus draf?'),
+                            content: const Text('Teks draf yang tersimpan akan hilang permanen.'),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(dialog, false),
+                                  child: const Text('Batal')),
+                              TextButton(onPressed: () => Navigator.pop(dialog, true),
+                                  child: const Text('Hapus')),
+                            ],
+                          ),
+                        );
+                        if (confirmed != true) return;
+                        final result = await RecipeService.deleteDraft(widget.userId!);
+                        if (!mounted) return;
+                        widget.onShowToast?.call(result.message);
+                        if (result.ok) setState(() {});
+                      },
+                    ),
+                  ))
+                : const SizedBox.shrink(),
+          ),
         const SizedBox(height: 18),
 
         // Buat Resep Promo Banner
@@ -636,7 +661,19 @@ class _ProfilScreenState extends State<ProfilScreen> {
                         size: 18, color: AppColors.onSurfaceVariant),
                   ),
                   IconButton(
-                    onPressed: () => widget.onDeleteRecipe(recipe.id),
+                    onPressed: () async {
+                      final confirmed = await showDialog<bool>(context: context,
+                        builder: (dialog) => AlertDialog(
+                          title: const Text('Hapus resep?'),
+                          content: Text('"${recipe.title}" akan dihapus permanen. Foto yang sudah diunggah tetap tersimpan.'),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(dialog, false), child: const Text('Batal')),
+                            TextButton(onPressed: () => Navigator.pop(dialog, true), child: const Text('Hapus')),
+                          ],
+                        ),
+                      );
+                      if (confirmed == true) widget.onDeleteRecipe(recipe.id);
+                    },
                     icon: const Icon(Icons.delete_outline,
                         size: 18, color: AppColors.error),
                   ),
@@ -692,12 +729,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
               child: Column(
                 children: [
                   _buildSettingTile(
-                    icon: Icons.menu_book,
-                    label: 'Resep Saya',
-                    onTap: widget.onNavigateToUpload,
-                  ),
-                  const Divider(height: 1, indent: 56),
-                  _buildSettingTile(
                     icon: Icons.bookmark,
                     label: 'Resep Favorit / Disimpan',
                     onTap: widget.onNavigateToFavorites,
@@ -711,15 +742,15 @@ class _ProfilScreenState extends State<ProfilScreen> {
                     ),
                   ],
                   const Divider(height: 1, indent: 56),
-                  _buildSettingTile(
-                    icon: Icons.help_outline,
-                    label: 'Bantuan & Tentang Aplikasi',
-                    onTap: () {
-                      widget.onShowToast?.call(
-                          'Resep Oma v2.4 — Komunitas Kuliner Nusantara & Dunia');
-                    },
-                  ),
-                  const Divider(height: 1, indent: 56),
+                   if (widget.onToggleDarkMode != null) ...[
+                     SwitchListTile(
+                       title: const Text('Mode Gelap'),
+                       secondary: const Icon(Icons.dark_mode_outlined),
+                       value: widget.darkMode,
+                       onChanged: widget.onToggleDarkMode,
+                     ),
+                     const Divider(height: 1, indent: 56),
+                   ],
                   if (widget.isLoggedIn)
                     _buildSettingTile(
                       icon: Icons.logout,
