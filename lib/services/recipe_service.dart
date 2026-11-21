@@ -151,6 +151,15 @@ class RecipeService {
         .toList();
   }
 
+  static Future<Recipe?> fetchRecipe(String id, {String? currentUid}) async {
+    if (!isReady) return null;
+    final doc = await _recipes.doc(id)
+        .get(const GetOptions(source: Source.server)).timeout(_readTimeout);
+    return doc.exists
+        ? Recipe.fromFirestore(doc.id, doc.data()!, currentUid: currentUid)
+        : null;
+  }
+
   static Future<ServiceResult> saveRecipe({
     String? recipeId,
     required String authorId,
@@ -429,9 +438,10 @@ class RecipeService {
 
   static Future<List<Map<String, dynamic>>> fetchComments(String recipeId) async {
     if (!isReady) return const [];
-    final snap = await _read(_recipes.doc(recipeId).collection('comments'));
-    final docs = snap.docs.toList()..sort(_newestFirst);
-    return [for (final doc in docs) {'id': doc.id, ...doc.data()}];
+    // shortcut: hanya 20 ulasan terbaru; tambahkan pagination jika riwayat lengkap diperlukan.
+    final snap = await _read(_recipes.doc(recipeId).collection('comments')
+        .orderBy('createdAt', descending: true).limit(20));
+    return [for (final doc in snap.docs) {'id': doc.id, ...doc.data()}];
   }
 
   static Future<ServiceResult> addComment({
@@ -518,13 +528,20 @@ class RecipeService {
 
   static Future<(int, int)> followCounts(String uid) async {
     if (!isReady) return (0, 0);
-    final followers = await _read(_follows.where('followingId', isEqualTo: uid));
-    final following = await _read(_follows.where('followerId', isEqualTo: uid));
-    return (followers.size, following.size);
+    final counts = await Future.wait([
+      _follows.where('followingId', isEqualTo: uid).count().get(),
+      _follows.where('followerId', isEqualTo: uid).count().get(),
+    ]).timeout(_readTimeout);
+    return (counts[0].count ?? 0, counts[1].count ?? 0);
   }
 
-  static Stream<QuerySnapshot<Map<String, dynamic>>> watchNotifications(String uid) =>
-      _notifications.where('recipientId', isEqualTo: uid).snapshots();
+  static Stream<QuerySnapshot<Map<String, dynamic>>> watchNotifications(
+      String uid, {bool unreadOnly = false}) {
+    final query = _notifications.where('recipientId', isEqualTo: uid);
+    if (unreadOnly) return query.where('seen', isEqualTo: false).limit(1).snapshots();
+    // shortcut: hanya 30 notifikasi terbaru; tambahkan pagination jika riwayat lengkap diperlukan.
+    return query.orderBy('createdAt', descending: true).limit(30).snapshots();
+  }
 
   static Future<void> markNotificationRead(String id) =>
       _notifications.doc(id).update({'seen': true});

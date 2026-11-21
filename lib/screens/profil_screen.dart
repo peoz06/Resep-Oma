@@ -62,17 +62,25 @@ class _ProfilScreenState extends State<ProfilScreen> {
   late String _name;
   late String _email;
   bool _sortLatest = true;
+  Future<(int, int)>? _followCounts;
 
   @override
   void initState() {
     super.initState();
     _name = widget.isLoggedIn ? widget.userName : 'Pengguna Tamu';
     _email = widget.isLoggedIn ? widget.userEmail : 'Belum masuk akun';
+    if (widget.userId != null) {
+      _followCounts = RecipeService.followCounts(widget.userId!);
+    }
   }
 
   @override
   void didUpdateWidget(covariant ProfilScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.userId != oldWidget.userId) {
+      _followCounts = widget.userId == null
+          ? null : RecipeService.followCounts(widget.userId!);
+    }
     if (widget.isLoggedIn != oldWidget.isLoggedIn ||
         widget.userName != oldWidget.userName ||
         widget.userEmail != oldWidget.userEmail) {
@@ -429,7 +437,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
         ),
         if (widget.isLoggedIn && widget.userId != null && RecipeService.isReady)
           FutureBuilder<(int, int)>(
-            future: RecipeService.followCounts(widget.userId!),
+            future: _followCounts,
             builder: (context, snap) => snap.hasData
                 ? Padding(padding: const EdgeInsets.symmetric(vertical: 8),
                     child: Text('${snap.data!.$1} pengikut • ${snap.data!.$2} mengikuti',

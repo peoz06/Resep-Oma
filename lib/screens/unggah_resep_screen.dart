@@ -84,7 +84,11 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
     try {
       final draft = await RecipeService.fetchDraft(uid);
       if (!mounted || draft == null || widget.userId != uid ||
-          _titleController.text.isNotEmpty) {
+          _titleController.text.isNotEmpty || _descController.text.isNotEmpty ||
+          _timeController.text.isNotEmpty || _servingsController.text.isNotEmpty ||
+          _selectedCategory.isNotEmpty || _difficulty != null ||
+          _ingredients.isNotEmpty || _steps.isNotEmpty ||
+          _heroPhoto.isNotEmpty || _subPhotos.isNotEmpty) {
         return;
       }
       setState(() {
@@ -423,13 +427,13 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
     );
 
     if (!mounted) return;
-    setState(() => _isPublishing = false);
 
     if (res.ok) {
       final draftResult = widget.recipe == null
           ? await RecipeService.deleteDraft(widget.userId!)
           : const ServiceResult(ok: true);
       if (!mounted) return;
+      setState(() => _isPublishing = false);
       widget.onPublishRecipe();
       widget.onShowToast?.call(
         widget.recipe == null
@@ -445,6 +449,7 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
         _steps.clear();
       });
     } else {
+      setState(() => _isPublishing = false);
       widget.onShowToast?.call(
         'Resep gagal disimpan ke Firestore. ${res.message} '
         'File yang sudah terunggah tetap di Supabase dan tidak dihapus. Silakan coba simpan lagi.',

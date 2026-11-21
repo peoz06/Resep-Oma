@@ -432,8 +432,34 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       onShowToast: _showToast,
       currentUserId: _currentUserId,
       currentUserName: _currentUserName,
-      onRecipeChanged: _loadRecipes,
+      onRecipeChanged: () => _refreshRecipe(recipe),
     );
+  }
+
+  Future<void> _refreshRecipe(Recipe recipe) async {
+    final uid = _currentUserId;
+    try {
+      final updated = await RecipeService.fetchRecipe(recipe.id, currentUid: uid);
+      if (!mounted || _loggingOut || uid != _currentUserId) return;
+      final index = _recipes.indexWhere((item) => item.id == recipe.id);
+      if (index == -1) return;
+      setState(() {
+        if (updated == null) {
+          _recipes.removeAt(index);
+        } else {
+          final current = _recipes[index];
+          _recipes[index] = updated.copyWith(
+            isFavorite: current.isFavorite,
+            favoritedAt: current.favoritedAt,
+            isLiked: recipe.isLiked,
+          );
+        }
+      });
+    } catch (e) {
+      if (mounted && !_loggingOut && uid == _currentUserId) {
+        _showToast(RecipeService.errorMessage(e));
+      }
+    }
   }
 
   void _publishRecipe() {

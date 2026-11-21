@@ -31,6 +31,25 @@ class BerandaScreen extends StatefulWidget {
 
 class _BerandaScreenState extends State<BerandaScreen> {
   String _selectedCategory = 'Populer';
+  Stream<QuerySnapshot<Map<String, dynamic>>>? _unreadNotifications;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.userId != null && RecipeService.isReady) {
+      _unreadNotifications = RecipeService.watchNotifications(widget.userId!, unreadOnly: true);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant BerandaScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.userId != oldWidget.userId) {
+      _unreadNotifications = widget.userId != null && RecipeService.isReady
+          ? RecipeService.watchNotifications(widget.userId!, unreadOnly: true)
+          : null;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -102,9 +121,8 @@ class _BerandaScreenState extends State<BerandaScreen> {
                     ),
                     if (widget.userId != null && RecipeService.isReady)
                       StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                        stream: RecipeService.watchNotifications(widget.userId!),
-                        builder: (context, snap) => snap.data?.docs.any(
-                            (doc) => doc.data()['seen'] != true) == true
+                        stream: _unreadNotifications,
+                        builder: (context, snap) => snap.data?.docs.isNotEmpty == true
                             ? Positioned(top: 10, right: 10,
                                 child: Container(width: 8, height: 8,
                                     decoration: const BoxDecoration(

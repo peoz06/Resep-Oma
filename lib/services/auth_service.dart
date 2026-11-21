@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -115,6 +116,11 @@ class AuthService {
       );
       try {
         await _saveProfile(profile);
+      } on TimeoutException {
+        // Timeout tidak membatalkan penulisan Firestore yang masih berjalan.
+        await _safeSignOut();
+        return const AuthResult(ok: false,
+            message: 'Akun sudah dibuat, tetapi penyimpanan profil belum terkonfirmasi. Silakan masuk kembali; tidak perlu mendaftar ulang.');
       } catch (e) {
         // Jangan tinggalkan akun Auth yatim bila profil wajib gagal dibuat.
         try {

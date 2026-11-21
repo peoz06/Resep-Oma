@@ -726,7 +726,8 @@ class _RecipeDetailSheetState extends State<RecipeDetailSheet> {
                         final average = comments.fold<int>(0, (n, item) =>
                             n + (item['rating'] as num).toInt()) / comments.length;
                         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text('★ ${average.toStringAsFixed(1)} / 5 • ${comments.length} ulasan'),
+                          Text('★ ${average.toStringAsFixed(1)} / 5 • ${comments.length} ulasan terbaru'),
+                          const Text('Rata-rata dari maksimal 20 ulasan terbaru, bukan seluruh ulasan.'),
                           for (final item in comments) ListTile(
                             contentPadding: EdgeInsets.zero,
                             title: Text('${item['authorName']} • ${item['rating']} ★'),

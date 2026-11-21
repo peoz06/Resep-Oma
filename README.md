@@ -44,6 +44,9 @@ Panduan lanjutan:
   foto harus dipilih ulang), favorit, suka dan recook sekali per akun.
 - Ulasan dan rating 1–5, ikuti koki, salin ringkasan resep untuk dibagikan,
   notifikasi aktivitas (suka/recook/ulasan) dalam aplikasi.
+  Detail menampilkan maksimal 20 ulasan terbaru; rata-rata bukan dari seluruh
+  ulasan. Notifikasi menampilkan maksimal 30 aktivitas terbaru; penanda di Beranda
+  hanya membaca satu aktivitas yang belum dibaca.
 - Admin: laporan, status dan role pengguna, serta verifikasi resep. Admin
   pertama tetap dibuat lewat Firebase Console.
 - Daftar/login, pemulihan sandi, email verifikasi, profil, tema gelap, mode tamu.
@@ -63,6 +66,12 @@ Firebase CLI terbaru memerlukan Java 21 untuk emulator.
 Rules terbaru sudah dipublikasikan menurut pemilik project. Pembacaan resep
 tanpa login dan penolakan baca profil tanpa login sudah diuji; aturan produksi
 lain belum diverifikasi langsung. Commit atau pull tidak men-deploy rules.
+
+Perbaikan audit memerlukan publikasi ulang `firestore.rules` dan indeks notifikasi
+di `firestore.indexes.json` oleh pemilik project. Tinjau lalu deploy dengan
+`firebase deploy --only firestore:rules,firestore:indexes --project resep-oma`,
+atau buat indeks `notifications` (`recipientId` ascending, `createdAt` descending)
+di Console. Tunggu indeks selesai dibuat sebelum menguji daftar notifikasi.
 
 Akun admin pertama harus diatur manual di **Firestore Console**. Setelah akun
 terdaftar melalui Firebase Auth, gunakan dokumen `users/<UID Auth>` dengan

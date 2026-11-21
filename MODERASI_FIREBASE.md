@@ -32,6 +32,12 @@ penolakan baca profil tanpa login telah diuji. Agent tidak melakukan deploy.
 | `reports` | ditolak | pengguna aktif membuat laporan dengan identitas sendiri | read/update/delete semua; create dengan identitas sendiri |
 | lainnya/subkoleksi | ditolak | ditolak | ditolak |
 
+Resep baru wajib memakai `verified:false`, `likesCount:0`, dan `recooksCount:0`.
+Verifikasi berikutnya hanya melalui admin; suka/recook melalui transaksi terkait.
+Notifikasi dibatasi 30 terbaru (penanda Beranda: satu yang belum dibaca), ulasan
+20 terbaru dengan rata-rata dari kumpulan tersebut. Jumlah pengikut memakai
+agregasi `count()` di server, bukan mengunduh seluruh dokumen hubungan.
+
 `read` mencakup get dan query. Koleksi yang
 tidak disebut ditolak secara default, tanpa `match /{document=**}`.
 Profil hanya dibaca pemilik/admin karena berisi email. Admin harus memiliki
@@ -99,6 +105,11 @@ produksi lainnya sebelum mencoba fitur baru.
 4. Jalankan tes emulator dan uji aplikasi dua sesi di bawah.
 5. Untuk perubahan rules berikutnya, ganti **seluruh** rules live melalui Console
    setelah pengujian. Jangan sisakan match permisif lama. Agent tidak melakukan deploy.
+6. Perbaikan audit ini belum dipublikasikan otomatis. Deploy `firestore.rules` dan
+   `firestore.indexes.json` melalui
+   `firebase deploy --only firestore:rules,firestore:indexes --project resep-oma`,
+   atau buat indeks notifikasi di Console (`recipientId` ascending,
+   `createdAt` descending). Tunggu indeks siap sebelum menguji daftar notifikasi.
 
 ## Emulator: tes rules otomatis
 
@@ -129,7 +140,7 @@ Tes tambahan mencakup banned, status legacy/null/tidak dikenal, anonymous, kepem
 laporan, pemalsuan authorId, field email, admin nonaktif, larangan delete profil,
 default-deny, dan penerimaan perubahan status melalui listener SDK Firestore.
 
-**Hasil terverifikasi:** 22 tes rules lulus pada emulator lokal. Tes registrasi
+**Hasil terverifikasi:** 32 tes rules lulus pada emulator lokal. Tes emulator registrasi
 hanya membuktikan create profil Firestore, bukan Firebase Authentication
 end-to-end. Tes listener Node membuktikan penerimaan status, bukan logout UI Flutter.
 
@@ -138,7 +149,7 @@ flutter analyze --no-pub
 flutter test --no-pub
 ```
 
-Hasil lokal: `flutter analyze --no-pub` tanpa temuan; 13 tes Flutter lulus.
+Hasil lokal: `flutter analyze --no-pub` tanpa temuan; 31 tes Flutter lulus.
 `git diff --check` bersih. Pemeriksaan layout dilakukan lewat widget test, bukan
 inspeksi visual perangkat nyata.
 
@@ -149,8 +160,9 @@ mengubah akun nyata untuk menyiapkan fixture. Emulator lebih aman.
 
 1. Siapkan `users/admin` (admin/active), `users/owner` (user/active), dan
    `users/suspended` (user/suspended).
-2. Siapkan `recipes/recipe1` dengan `authorId:owner`, `authorName:Koki`,
-   `title:Sup`, `image:https://example.com/sup.jpg`, `ingredients:[]`, `steps:[]`.
+2. Siapkan `recipes/recipe1` dengan `authorId:owner`, `authorName` sesuai nama profil,
+   `title:Sup`, `image:https://example.com/sup.jpg`, `ingredients:[]`, `steps:[]`,
+   `verified:false`, `likesCount:0`, `recooksCount:0`.
 3. DELETE `/recipes/recipe1`: UID admin allow, UID user lain deny.
 4. UPDATE `/users/owner`: UID owner mengubah role menjadi admin deny.
 5. CREATE resep memakai payload langkah 2 dengan authorId sesuai UID:

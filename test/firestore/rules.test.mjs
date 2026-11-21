@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { before, after, beforeEach, test } from 'node:test';
 import { assertFails, assertSucceeds, initializeTestEnvironment } from '@firebase/rules-unit-testing';
-import { collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getCountFromServer, getDoc, getDocs, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
 import assert from 'node:assert/strict';
 
 // Project demo dan host emulator wajib: tes ini tidak boleh menyentuh cloud.
@@ -10,7 +10,8 @@ let env;
 const recipe = (authorId = 'owner') => ({
   title: 'Sup Ayam', authorId, authorName: authorId, authorAvatar: '',
   image: 'https://example.com/sup.jpg', ingredients: [{ name: 'Ayam', amount: '500 g' }],
-  steps: [{ title: 'Rebus', description: 'Rebus hingga matang.' }], likesCount: 3,
+  steps: [{ title: 'Rebus', description: 'Rebus hingga matang.' }],
+  likesCount: 0, recooksCount: 0, verified: false,
 });
 const signedIn = (uid) => env.authenticatedContext(uid, { firebase: { sign_in_provider: 'password' } }).firestore();
 const guest = () => env.unauthenticatedContext().firestore();
@@ -37,7 +38,7 @@ beforeEach(async () => {
     ]) {
       await setDoc(at(db, `users/${uid}`), { name: uid, role, ...(status !== undefined ? { status } : {}) });
     }
-    await setDoc(at(db, 'recipes/recipe1'), recipe());
+    await setDoc(at(db, 'recipes/recipe1'), { ...recipe(), likesCount: 3 });
     await setDoc(at(db, 'favorites/owner__recipe1'), { uid: 'owner', recipeId: 'recipe1' });
     await setDoc(at(db, 'reports/report1'), { reporterId: 'owner', recipeId: 'recipe1', reason: 'Foto salah', status: 'open' });
   });
@@ -330,4 +331,65 @@ test('Hanya admin aktif dapat mengubah role orang lain dan verifikasi resep', as
   await assertFails(updateDoc(at(signedIn('owner'), 'recipes/recipe1'), { verified: true }));
   await assertSucceeds(updateDoc(at(signedIn('admin'), 'recipes/recipe1'), { verified: true }));
   await assertFails(updateDoc(at(signedIn('suspendedAdmin'), 'recipes/recipe1'), { verified: false }));
+});
+
+test('Resep baru wajib belum terverifikasi dan penghitung awal nol', async () => {
+  const db = signedIn('owner');
+  await assertSucceeds(setDoc(at(db, 'recipes/valid'), recipe()));
+  for (const invalid of [
+    { verified: true }, { verified: null },
+    { likesCount: 1 }, { likesCount: -1 },
+    { recooksCount: 1 }, { recooksCount: -1 },
+  ]) {
+    await assertFails(setDoc(at(db, 'recipes/invalid'), { ...recipe(), ...invalid }));
+  }
+  for (const field of ['verified', 'likesCount', 'recooksCount']) {
+    const missing = recipe();
+    delete missing[field];
+    await assertFails(setDoc(at(db, 'recipes/missing'), missing));
+  }
+});
+
+test('Query terbaru dibatasi dan count pengikut tetap menghormati kepemilikan', async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    const batch = writeBatch(db);
+    for (let i = 0; i < 40; i++) {
+      batch.set(at(db, `notifications/n${i}`), {
+        recipientId: 'owner', actorId: 'other', recipeId: 'recipe1',
+        kind: 'like', title: 'Sup Ayam', seen: i < 35, createdAt: new Date(1000 + i),
+      });
+    }
+    for (let i = 0; i < 25; i++) {
+      batch.set(at(db, `recipes/recipe1/comments/c${i}`), {
+        authorId: `user${i}`, authorName: 'Koki', text: 'Enak', rating: 5,
+        createdAt: new Date(1000 + i),
+      });
+    }
+    for (let i = 0; i < 8; i++) {
+      batch.set(at(db, `follows/user${i}__owner`), {
+        followerId: `user${i}`, followingId: 'owner', createdAt: new Date(),
+      });
+    }
+    await batch.commit();
+  });
+  const owner = signedIn('owner');
+  const recent = await getDocs(query(collection(owner, 'notifications'),
+    where('recipientId', '==', 'owner'), orderBy('createdAt', 'desc'), limit(30)));
+  assert.equal(recent.size, 30);
+  assert.equal(recent.docs[0].id, 'n39');
+  assert.equal(recent.docs[29].id, 'n10');
+  const unread = await getDocs(query(collection(owner, 'notifications'),
+    where('recipientId', '==', 'owner'), where('seen', '==', false), limit(1)));
+  assert.equal(unread.size, 1);
+  assert.equal(unread.docs[0].data().seen, false);
+  const comments = await getDocs(query(collection(guest(), 'recipes/recipe1/comments'),
+    orderBy('createdAt', 'desc'), limit(20)));
+  assert.equal(comments.size, 20);
+  assert.equal(comments.docs[0].id, 'c24');
+  assert.equal(comments.docs[19].id, 'c5');
+  const followers = query(collection(owner, 'follows'), where('followingId', '==', 'owner'));
+  assert.equal((await getCountFromServer(followers)).data().count, 8);
+  await assertFails(getCountFromServer(query(collection(signedIn('other'), 'follows'),
+    where('followingId', '==', 'owner'))));
 });

@@ -40,24 +40,21 @@ class NotificationsSheet extends StatelessWidget {
                   if (!snapshot.hasData) {
                     return const CircularProgressIndicator();
                   }
-                  final items = snapshot.data!.docs.toList()
-                    ..sort((a, b) {
-                      final dateA = (a.data()['createdAt'] as Timestamp?)
-                              ?.millisecondsSinceEpoch ??
-                          0;
-                      final dateB = (b.data()['createdAt'] as Timestamp?)
-                              ?.millisecondsSinceEpoch ??
-                          0;
-                      return dateB.compareTo(dateA);
-                    });
+                  final items = snapshot.data!.docs;
                   if (items.isEmpty) {
                     return const Text('Belum ada aktivitas baru.');
                   }
                   return Flexible(
                       child: ListView.builder(
                     shrinkWrap: true,
-                    itemCount: items.length,
+                    itemCount: items.length + 1,
                     itemBuilder: (context, index) {
+                      if (index == items.length) {
+                        return const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: Text('Menampilkan maksimal 30 notifikasi terbaru.'),
+                        );
+                      }
                       final item = items[index];
                       final data = item.data();
                       final action = switch (data['kind']) {

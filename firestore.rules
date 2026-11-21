@@ -51,6 +51,9 @@ service cloud.firestore {
       allow create: if activeUser()
         && request.resource.data.authorId == request.auth.uid
         && request.resource.data.authorName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.name
+        && request.resource.data.verified == false
+        && request.resource.data.likesCount == 0
+        && request.resource.data.recooksCount == 0
         && publicRecipe(request.resource.data);
       allow update: if publicRecipe(request.resource.data) && (
         admin() || (
