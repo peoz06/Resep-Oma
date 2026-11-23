@@ -1,5 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'auth_service.dart';
+
 class SupabaseService {
   static const _url = String.fromEnvironment('SUPABASE_URL');
   static const _key = String.fromEnvironment('SUPABASE_PUBLISHABLE_KEY');
@@ -17,12 +19,10 @@ class SupabaseService {
         url: _url,
         publishableKey: _key,
         debug: false,
-        // Identitas tetap dikelola Firebase; Storage memakai akses anon tanpa sesi Supabase.
-        authOptions: const FlutterAuthClientOptions(
-          autoRefreshToken: false,
-          detectSessionInUri: false,
-          persistSession: false,
-        ),
+        accessToken: () async {
+          final user = AuthService.firebaseUser;
+          return user == null || user.isAnonymous ? null : user.getIdToken();
+        },
       );
       _ready = true;
     } catch (_) {

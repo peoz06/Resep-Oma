@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // START: FlutterFire Configuration
@@ -6,6 +8,12 @@ plugins {
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+val releaseKeys = Properties()
+val releaseKeysFile = rootProject.file("key.properties")
+if (releaseKeysFile.isFile) releaseKeysFile.inputStream().use { releaseKeys.load(it) }
+val hasReleaseKeys = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
+    .all { !releaseKeys.getProperty(it).isNullOrBlank() }
 
 android {
     namespace = "com.example.dapurkita"
@@ -32,12 +40,27 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (hasReleaseKeys) {
+            create("release") {
+                storeFile = rootProject.file(releaseKeys.getProperty("storeFile"))
+                storePassword = releaseKeys.getProperty("storePassword")
+                keyAlias = releaseKeys.getProperty("keyAlias")
+                keyPassword = releaseKeys.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release")
         }
+    }
+}
+
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    doFirst {
+        check(hasReleaseKeys) { "Lengkapi android/key.properties dengan keystore rilis. Lihat README.md." }
     }
 }
 

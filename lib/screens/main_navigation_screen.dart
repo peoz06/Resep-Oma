@@ -61,6 +61,16 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _adminNavIndex = 0;
 
   late List<Recipe> _recipes;
+  RecipePage? _recipePage;
+  bool _loadingMoreRecipes = false;
+  int _catalogRequest = 0;
+  List<Recipe> _personalRecipes = [];
+  bool _loadingPersonalRecipes = false;
+  String? _personalRecipesError;
+  int _personalRequest = 0;
+  Map<String, DateTime> _favoriteDates = {};
+  Set<String> _likedIds = {};
+  final _favoriteWrites = <(String, String)>{};
   String? _toastMessage;
   bool _offlineMode = false;
   String? _recipesError;
@@ -115,6 +125,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     _currentUserAvatar = null;
     _editingRecipe = null;
     _pendingUploadAfterLogin = false;
+    _personalRecipes = [];
+    _favoriteDates = {};
+    _likedIds = {};
   }
 
   void _watchCurrentUser() {
@@ -153,7 +166,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   /// Muat daftar resep dari Firestore.
   /// Data contoh hanya dipakai tanpa Firebase; kegagalan izin tidak disamarkan sebagai katalog kosong.
   Future<void> _loadRecipes() async {
-    setState(() => _loadingRecipes = true);
+    final request = ++_catalogRequest;
+    setState(() {
+      _loadingRecipes = true;
+      _loadingMoreRecipes = false;
+      _recipePage = null;
+    });
 
     if (!FirebaseService.isReady) {
       setState(() {
@@ -170,29 +188,121 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       return;
     }
     final uid = _currentUserId;
+    bool isCurrent() => mounted && !_loggingOut &&
+        uid == _currentUserId && request == _catalogRequest;
     try {
-      final favDates = uid == null
-          ? <String, DateTime>{}
-          : await RecipeService.fetchFavoriteDates(uid);
-      final likedIds =
-          uid == null ? <String>{} : await RecipeService.fetchLikedIds(uid);
-      final recipes = await RecipeService.fetchRecipes(
-          currentUid: uid, favoriteIds: favDates.keys.toSet(),
-          favoriteDates: favDates, likedIds: likedIds);
-      if (!mounted || _loggingOut || uid != _currentUserId) return;
+      final (page, dates, likes) = await (
+        RecipeService.fetchRecipes(),
+        uid == null ? Future.value(<String, DateTime>{}) : RecipeService.fetchFavoriteDates(uid),
+        uid == null ? Future.value(<String>{}) : RecipeService.fetchLikedIds(uid),
+      ).wait;
+      if (!isCurrent()) return;
       setState(() {
-        _recipes = recipes;
+        _favoriteDates = dates;
+        _likedIds = likes;
+        _recipePage = page;
+        _recipes = page.recipes.map(_withRecipeActivity).toList();
         _offlineMode = false;
         _recipesError = null;
         _loadingRecipes = false;
       });
     } catch (e) {
-      if (!mounted || _loggingOut || uid != _currentUserId) return;
+      if (!isCurrent()) return;
+      final error = switch (e) {
+        ParallelWaitError(errors: (AsyncError? catalog, AsyncError? favorites, AsyncError? likes)) =>
+          catalog?.error ?? favorites?.error ?? likes?.error ?? e,
+        _ => e,
+      };
       setState(() {
         _loadingRecipes = false;
-        _recipesError = RecipeService.errorMessage(e);
+        _recipesError = RecipeService.errorMessage(error);
       });
       _showToast(_recipesError!);
+    }
+    if (isCurrent() && _showsPersonalRecipes) await _loadPersonalRecipes();
+  }
+
+  Recipe _withRecipeActivity(Recipe recipe) => recipe.copyWith(
+    isFavorite: _favoriteDates.containsKey(recipe.id),
+    favoritedAt: _favoriteDates[recipe.id],
+    isLiked: _likedIds.contains(recipe.id),
+    isMyRecipe: _currentUserId != null && recipe.authorId == _currentUserId,
+  );
+
+  Future<void> _loadMoreRecipes() async {
+    final next = _recipePage?.next;
+    if (next == null || _loadingMoreRecipes || _loggingOut) return;
+    final request = _catalogRequest;
+    final uid = _currentUserId;
+    bool isCurrent() => mounted && !_loggingOut &&
+        uid == _currentUserId && request == _catalogRequest;
+    setState(() => _loadingMoreRecipes = true);
+    try {
+      final page = await RecipeService.fetchRecipes(after: next);
+      if (!isCurrent()) return;
+      final loaded = _recipes.map((r) => r.id).toSet();
+      setState(() {
+        _recipePage = page;
+        _recipes.addAll(page.recipes.where((r) => loaded.add(r.id)).map(_withRecipeActivity));
+      });
+    } catch (e) {
+      if (isCurrent()) _showToast(RecipeService.errorMessage(e));
+    } finally {
+      if (isCurrent()) setState(() => _loadingMoreRecipes = false);
+    }
+  }
+
+  bool get _showsPersonalRecipes => _isLoggedIn && _currentMode == AppMode.user &&
+      (_userNavIndex == 3 || _userNavIndex == 4);
+
+  void _openUserTab(int index) {
+    if (_currentMode == AppMode.user && index == _userNavIndex) return;
+    _personalRequest++;
+    setState(() {
+      _currentMode = AppMode.user;
+      _userNavIndex = index;
+      _personalRecipes = [];
+      _personalRecipesError = null;
+      _loadingPersonalRecipes = false;
+    });
+    if (_showsPersonalRecipes && !_loadingRecipes) _loadPersonalRecipes();
+  }
+
+  Future<void> _loadPersonalRecipes() async {
+    final uid = _currentUserId;
+    if (uid == null || !RecipeService.isReady) return;
+    final request = ++_personalRequest;
+    final index = _userNavIndex;
+    bool isCurrent() => mounted && !_loggingOut && uid == _currentUserId &&
+        _showsPersonalRecipes && index == _userNavIndex && request == _personalRequest;
+    setState(() {
+      _loadingPersonalRecipes = true;
+      _personalRecipesError = null;
+    });
+    try {
+      final recipes = index == 3
+          ? await RecipeService.fetchRecipesById(_favoriteDates.keys)
+          : await RecipeService.fetchOwnRecipes(uid);
+      if (isCurrent()) {
+        setState(() => _personalRecipes = recipes.map(_withRecipeActivity).toList());
+      }
+    } catch (e) {
+      if (isCurrent()) setState(() => _personalRecipesError = RecipeService.errorMessage(e));
+    } finally {
+      if (isCurrent()) setState(() => _loadingPersonalRecipes = false);
+    }
+  }
+
+  void _updateRecipeInLists(String id, Recipe? Function(Recipe) update) {
+    for (final list in [_recipes, _personalRecipes]) {
+      final index = list.indexWhere((r) => r.id == id);
+      if (index == -1) continue;
+      final recipe = update(list[index]);
+      if (recipe == null) {
+        list.removeAt(index);
+      } else {
+        list[index] = recipe;
+      }
     }
   }
 
@@ -398,7 +508,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       return null;
     }
 
-    final newState = await RecipeService.toggleFavorite(uid: uid, recipeId: id);
+    if (!_favoriteWrites.add((uid, id))) return null;
+    final bool? newState;
+    try {
+      newState = await RecipeService.toggleFavorite(uid: uid, recipeId: id);
+    } finally {
+      _favoriteWrites.remove((uid, id));
+    }
 
     if (!mounted || _loggingOut || uid != _currentUserId) return null;
 
@@ -407,17 +523,18 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       return null;
     }
 
+    var title = 'Resep';
     setState(() {
-      final idx = _recipes.indexWhere((r) => r.id == id);
-      if (idx != -1) {
-        _recipes[idx] = _recipes[idx].copyWith(
-          isFavorite: newState,
-          favoritedAt: newState ? DateTime.now() : null,
-        );
+      if (newState == true) {
+        _favoriteDates[id] = DateTime.now();
+      } else {
+        _favoriteDates.remove(id);
       }
+      _updateRecipeInLists(id, (recipe) {
+        title = recipe.title;
+        return _withRecipeActivity(recipe);
+      });
     });
-    final idx = _recipes.indexWhere((r) => r.id == id);
-    final title = idx != -1 ? _recipes[idx].title : '';
     _showToast(newState
         ? '"$title" disimpan ke Favorit'
         : '"$title" dihapus dari Favorit');
@@ -432,28 +549,24 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       onShowToast: _showToast,
       currentUserId: _currentUserId,
       currentUserName: _currentUserName,
-      onRecipeChanged: () => _refreshRecipe(recipe),
+      onRecipeChanged: () => _refreshRecipe(recipe.id, isLiked: recipe.isLiked),
     );
   }
 
-  Future<void> _refreshRecipe(Recipe recipe) async {
+  Future<void> _refreshRecipe(String id, {bool? isLiked}) async {
     final uid = _currentUserId;
+    if (isLiked != null) {
+      if (isLiked) {
+        _likedIds.add(id);
+      } else {
+        _likedIds.remove(id);
+      }
+    }
     try {
-      final updated = await RecipeService.fetchRecipe(recipe.id, currentUid: uid);
+      final updated = await RecipeService.fetchRecipe(id);
       if (!mounted || _loggingOut || uid != _currentUserId) return;
-      final index = _recipes.indexWhere((item) => item.id == recipe.id);
-      if (index == -1) return;
       setState(() {
-        if (updated == null) {
-          _recipes.removeAt(index);
-        } else {
-          final current = _recipes[index];
-          _recipes[index] = updated.copyWith(
-            isFavorite: current.isFavorite,
-            favoritedAt: current.favoritedAt,
-            isLiked: recipe.isLiked,
-          );
-        }
+        _updateRecipeInLists(id, (_) => updated == null ? null : _withRecipeActivity(updated));
       });
     } catch (e) {
       if (mounted && !_loggingOut && uid == _currentUserId) {
@@ -464,8 +577,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   void _publishRecipe() {
     // Muat ulang dari database agar data terbaru tampil (termasuk kode resep).
+    _openUserTab(0);
     _loadRecipes();
-    setState(() => _userNavIndex = 0);
   }
 
   Future<void> _deleteRecipe(String id) async {
@@ -474,7 +587,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
     if (!RecipeService.isReady || _offlineMode) {
       // Mode offline: hapus lokal saja.
-      setState(() => _recipes.removeWhere((r) => r.id == id));
+      setState(() => _updateRecipeInLists(id, (_) => null));
       _showToast('Resep "${target?.title ?? ''}" dihapus (mode offline).');
       return;
     }
@@ -484,9 +597,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     if (!mounted) return;
 
     if (res.ok) {
-      setState(() => _recipes.removeWhere((r) => r.id == id));
-      await _loadRecipes();
-      if (!mounted) return;
+      setState(() => _updateRecipeInLists(id, (_) => null));
       _showToast(
         res.message.isNotEmpty
             ? res.message
@@ -525,7 +636,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           recipes: _recipes,
           onSelectRecipe: _selectRecipe,
           onDeleteRecipe: _deleteRecipe,
-          onRefreshRecipes: _loadRecipes,
+          onRecipeChanged: _refreshRecipe,
+          onLoadMore: _recipePage?.next == null ? null : _loadMoreRecipes,
+          loadingMore: _loadingMoreRecipes,
           onNavigateToUpload: _onTapUpload,
           onShowToast: _showToast,
         );
@@ -536,10 +649,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           userName: _currentUserName,
           userEmail: _currentUserEmail,
           userAvatar: _currentUserAvatar,
-          onEditProfile: () => setState(() {
-            _currentMode = AppMode.user;
-            _userNavIndex = 4;
-          }),
+          onEditProfile: () => _openUserTab(4),
           darkMode: widget.darkMode,
           onToggleDarkMode: widget.onToggleDarkMode,
           onLogoutAdmin: _confirmLogout,
@@ -555,7 +665,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             userId: _currentUserId,
             onSelectRecipe: _selectRecipe,
             onToggleFavorite: _toggleFavorite,
-            onNavigateToExplore: () => setState(() => _userNavIndex = 1),
+            onNavigateToExplore: () => _openUserTab(1),
           );
           break;
         case 1:
@@ -564,6 +674,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             onSelectRecipe: _selectRecipe,
             onToggleFavorite: _toggleFavorite,
             onShowToast: _showToast,
+            onLoadMore: _recipePage?.next == null ? null : _loadMoreRecipes,
+            loadingMore: _loadingMoreRecipes,
           );
           break;
         case 2:
@@ -577,7 +689,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           break;
         case 3:
           currentScreenWidget = FavoritScreen(
-            recipes: _recipes,
+            recipes: _personalRecipes,
             onSelectRecipe: _selectRecipe,
             onToggleFavorite: _toggleFavorite,
             onShowToast: _showToast,
@@ -586,7 +698,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         case 4:
         default:
           currentScreenWidget = ProfilScreen(
-            recipes: _recipes,
+            recipes: _personalRecipes,
             isLoggedIn: _isLoggedIn,
             isAdmin: _currentUserRole == 'admin',
             userId: _currentUserId,
@@ -609,7 +721,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               });
             },
             onNavigateToUpload: _onTapUpload,
-            onNavigateToFavorites: () => setState(() => _userNavIndex = 3),
+            onNavigateToFavorites: () => _openUserTab(3),
             onNavigateToAdmin: () {
               if (_currentUserRole != 'admin') {
                 _showToast('Halaman admin hanya untuk akun dengan role Admin.');
@@ -638,6 +750,23 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           );
           break;
       }
+    }
+
+    if (_showsPersonalRecipes) {
+      currentScreenWidget = Column(
+        children: [
+          if (_loadingPersonalRecipes) const LinearProgressIndicator(),
+          if (_personalRecipesError case final error?)
+            ListTile(
+              title: Text(error),
+              trailing: TextButton(
+                onPressed: _loadPersonalRecipes,
+                child: const Text('Coba lagi'),
+              ),
+            ),
+          Expanded(child: currentScreenWidget),
+        ],
+      );
     }
 
     final mobileAppShell = Scaffold(
@@ -851,7 +980,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   Widget _buildNavItem(IconData icon, String label, int index) {
     final active = _userNavIndex == index;
     return InkWell(
-      onTap: () => setState(() => _userNavIndex = index),
+      onTap: () => _openUserTab(index),
       borderRadius: BorderRadius.circular(16),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),

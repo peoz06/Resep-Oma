@@ -45,6 +45,16 @@ void main() {
     expect(AdminUser.fromAppUser(banned).status, 'Diblokir');
   });
 
+  test('Profil lama dengan tipe salah tidak gagal dibaca atau mendapat role admin', () {
+    final profile = AppUser.fromFirestore('uid', {
+      'name': 12, 'email': [], 'avatar': true, 'role': ['admin'], 'createdAt': 'lama',
+    });
+    expect(profile.name, isEmpty);
+    expect(profile.email, isEmpty);
+    expect(profile.avatar, isNull);
+    expect(profile.isAdmin, isFalse);
+  });
+
   test('Error permission-denied tidak ditampilkan mentah', () {
     final message = RecipeService.errorMessage(FirebaseException(
       plugin: 'cloud_firestore',

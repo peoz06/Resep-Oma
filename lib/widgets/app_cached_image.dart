@@ -17,6 +17,7 @@ class AppCachedImage extends StatelessWidget {
   final BoxFit fit;
   final BorderRadius? borderRadius;
   final bool isCircle;
+  final bool allowLocal;
 
   const AppCachedImage({
     super.key,
@@ -26,6 +27,7 @@ class AppCachedImage extends StatelessWidget {
     this.fit = BoxFit.cover,
     this.borderRadius,
     this.isCircle = false,
+    this.allowLocal = false,
   });
 
   static bool isNetworkSource(String url) =>
@@ -80,7 +82,7 @@ class AppCachedImage extends StatelessWidget {
           return _loadingPlaceholder();
         },
       );
-    } else {
+    } else if (allowLocal) {
       final path = imageUrl.startsWith('file://')
           ? Uri.parse(imageUrl).toFilePath()
           : imageUrl;
@@ -99,6 +101,8 @@ class AppCachedImage extends StatelessWidget {
           );
         },
       );
+    } else {
+      imageWidget = _placeholder();
     }
 
     if (isCircle) {

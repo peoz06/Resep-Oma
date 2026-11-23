@@ -79,17 +79,19 @@ class AppUser {
 
   factory AppUser.fromFirestore(String uid, Map<String, dynamic> data) {
     final rawStatus = data.containsKey('status') ? data['status'] : 'active';
+    String? text(String key) => data[key] is String ? data[key] as String : null;
+    final createdAt = data['createdAt'];
     return AppUser(
       uid: uid,
-      name: (data['name'] ?? '') as String,
-      email: (data['email'] ?? '') as String,
-      role: (data['role'] ?? 'user') as String,
+      name: text('name') ?? '',
+      email: text('email') ?? '',
+      role: text('role') ?? 'user',
       status: rawStatus is String ? rawStatus : 'unknown',
-      avatar: data['avatar'] as String?,
-      provider: (data['provider'] ?? 'password') as String,
-      code: (data['code'] as String?) ?? AppUser.codeFromUid(uid),
-      pending: (data['pending'] ?? false) as bool,
-      createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
+      avatar: text('avatar'),
+      provider: text('provider') ?? 'password',
+      code: text('code') ?? AppUser.codeFromUid(uid),
+      pending: data['pending'] == true,
+      createdAt: createdAt is Timestamp ? createdAt.toDate() : null,
     );
   }
 

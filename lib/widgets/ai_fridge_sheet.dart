@@ -51,16 +51,14 @@ class _AiFridgeSheetState extends State<AiFridgeSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final matched = widget.recipes.where((r) {
+    final results = widget.recipes.where((r) {
       final titleLower = r.title.toLowerCase();
       final ingMatch = r.ingredients.any(
         (ing) => _selected.any((s) => ing.name.toLowerCase().contains(s.toLowerCase())),
       );
       final titleMatch = _selected.any((s) => titleLower.contains(s.toLowerCase()));
       return ingMatch || titleMatch;
-    }).toList();
-
-    final results = matched.isNotEmpty ? matched.take(3).toList() : widget.recipes.take(2).toList();
+    }).take(3).toList();
 
     return Container(
       padding: const EdgeInsets.all(24),
@@ -84,18 +82,18 @@ class _AiFridgeSheetState extends State<AiFridgeSheet> {
                       color: AppColors.primary,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.auto_awesome, color: Colors.white, size: 20),
+                    child: const Icon(Icons.kitchen_outlined, color: Colors.white, size: 20),
                   ),
                   const SizedBox(width: 12),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Kocok Bahan Kulkasmu',
+                        'Cari Resep dari Bahan',
                         style: Theme.of(context).textTheme.headlineSmall,
                       ),
                       const Text(
-                        'Pilih bahan yang tersedia di dapurmu hari ini',
+                        'Pilih bahan yang tersedia di dapurmu',
                         style: TextStyle(color: AppColors.secondary, fontSize: 12),
                       ),
                     ],
@@ -157,6 +155,8 @@ class _AiFridgeSheetState extends State<AiFridgeSheet> {
           ),
           const SizedBox(height: 12),
 
+          if (results.isEmpty)
+            const Text('Tidak ada resep yang cocok dengan bahan pilihan.'),
           ...results.map((r) {
             return InkWell(
               onTap: () {

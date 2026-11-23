@@ -68,8 +68,10 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
     if (!_categories.contains(recipe.category)) {
       _categories.add(recipe.category);
     }
-    _heroPhoto = recipe.image;
-    _subPhotos = List.of(recipe.secondaryImages ?? const <String>[]);
+    _heroPhoto = AppCachedImage.isNetworkSource(recipe.image) ? recipe.image : '';
+    _subPhotos = (recipe.secondaryImages ?? const <String>[])
+        .where(AppCachedImage.isNetworkSource)
+        .toList();
     _ingredients
       ..clear()
       ..addAll(recipe.ingredients);
@@ -231,6 +233,10 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
   }
 
   void _addIngredientDialog([Ingredient? ingredient]) {
+    if (ingredient == null && _ingredients.length >= RecipeService.maxRecipeRows) {
+      widget.onShowToast?.call('Maksimal ${RecipeService.maxRecipeRows} bahan per resep.');
+      return;
+    }
     final nameCtrl = TextEditingController(text: ingredient?.name);
     final amountCtrl = TextEditingController(text: ingredient?.amount);
 
@@ -291,6 +297,10 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
   }
 
   void _addStepDialog([CookingStep? step]) {
+    if (step == null && _steps.length >= RecipeService.maxRecipeRows) {
+      widget.onShowToast?.call('Maksimal ${RecipeService.maxRecipeRows} langkah per resep.');
+      return;
+    }
     final titleCtrl = TextEditingController(text: step?.title);
     final descCtrl = TextEditingController(text: step?.description);
 
@@ -360,6 +370,11 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
     }
     if (_titleController.text.trim().length > 60) {
       widget.onShowToast?.call('Nama resep maksimal 60 karakter.');
+      return;
+    }
+    if (_ingredients.length > RecipeService.maxRecipeRows ||
+        _steps.length > RecipeService.maxRecipeRows) {
+      widget.onShowToast?.call('Maksimal ${RecipeService.maxRecipeRows} bahan dan langkah per resep.');
       return;
     }
     if (_selectedCategory.isEmpty || _timeController.text.trim().isEmpty ||
@@ -602,6 +617,7 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
                       child: AppCachedImage(
                         imageUrl: _heroPhoto,
                         isCircle: true,
+                        allowLocal: true,
                       ),
                     ),
                     Positioned(
@@ -648,6 +664,7 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
                         child: AppCachedImage(
                           imageUrl: photo,
                           isCircle: true,
+                          allowLocal: true,
                         ),
                       ),
                     );

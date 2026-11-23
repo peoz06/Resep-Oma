@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { before, after, beforeEach, test } from 'node:test';
 import { assertFails, assertSucceeds, initializeTestEnvironment } from '@firebase/rules-unit-testing';
-import { collection, deleteDoc, doc, getCountFromServer, getDoc, getDocs, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getCountFromServer, getDoc, getDocs, limit, onSnapshot, orderBy, query, runTransaction, serverTimestamp, setDoc, startAfter, updateDoc, where, writeBatch } from 'firebase/firestore';
 import assert from 'node:assert/strict';
 
 // Project demo dan host emulator wajib: tes ini tidak boleh menyentuh cloud.
@@ -12,7 +12,12 @@ const recipe = (authorId = 'owner') => ({
   image: 'https://example.com/sup.jpg', ingredients: [{ name: 'Ayam', amount: '500 g' }],
   steps: [{ title: 'Rebus', description: 'Rebus hingga matang.' }],
   likesCount: 0, recooksCount: 0, verified: false,
+  createdAt: serverTimestamp(),
 });
+const report = {
+  recipeId: 'recipe1', recipeTitle: 'Sup Ayam', reporterId: 'owner',
+  reporterName: 'owner', reason: 'Spam', status: 'open', createdAt: serverTimestamp(),
+};
 const signedIn = (uid) => env.authenticatedContext(uid, { firebase: { sign_in_provider: 'password' } }).firestore();
 const guest = () => env.unauthenticatedContext().firestore();
 const at = (db, path) => doc(db, path);
@@ -167,12 +172,113 @@ test('Favorit hanya milik sendiri: get baru, query, create/update/delete', async
   await assertSucceeds(deleteDoc(ref));
 });
 test('Laporan: user membuat, hanya admin membaca/mengubah/menghapus', async () => {
-  await assertSucceeds(setDoc(at(signedIn('owner'), 'reports/new'), { reporterId: 'owner', reason: 'Spam', status: 'open' }));
-  await assertFails(getDoc(at(signedIn('owner'), 'reports/new')));
-  await assertFails(updateDoc(at(signedIn('owner'), 'reports/new'), { status: 'resolved' }));
+  const path = 'reports/owner__recipe1';
+  await assertSucceeds(setDoc(at(signedIn('owner'), path), report));
+  await assertFails(getDoc(at(signedIn('owner'), path)));
+  await assertFails(updateDoc(at(signedIn('owner'), path), { status: 'resolved' }));
   await assertSucceeds(getDocs(collection(signedIn('admin'), 'reports')));
-  await assertSucceeds(updateDoc(at(signedIn('admin'), 'reports/new'), { status: 'resolved' }));
-  await assertSucceeds(deleteDoc(at(signedIn('admin'), 'reports/new')));
+  await assertSucceeds(updateDoc(at(signedIn('admin'), path), { status: 'resolved', resolvedAt: serverTimestamp() }));
+  await assertSucceeds(deleteDoc(at(signedIn('admin'), path)));
+});
+test('Laporan harus valid dan hanya boleh dibuat sekali per akun dan resep', async () => {
+  const db = signedIn('owner');
+  const ref = at(db, 'reports/owner__recipe1');
+  for (const invalid of [
+    { recipeTitle: 123 }, { recipeTitle: 'Judul lain' },
+    { reason: 'a'.repeat(501) }, { createdAt: new Date() },
+  ]) {
+    await assertFails(setDoc(ref, { ...report, ...invalid }));
+  }
+  await assertFails(setDoc(at(db, 'reports/other-id'), report));
+  await assertFails(setDoc(at(db, 'reports/owner__missing'), { ...report, recipeId: 'missing' }));
+  await assertSucceeds(setDoc(ref, report));
+  await assertFails(setDoc(ref, report));
+});
+
+test('Profil menolak tipe salah saat dibuat dan diperbarui', async () => {
+  const profile = { name: 'Oma', email: 'oma@example.com', role: 'user', status: 'active' };
+  const newRef = at(signedIn('newUser'), 'users/newUser');
+  const owner = at(signedIn('owner'), 'users/owner');
+  for (const invalid of [{ name: 123 }, { email: [] }, { avatar: true }]) {
+    await assertFails(setDoc(newRef, { ...profile, ...invalid }));
+    await assertFails(updateDoc(owner, invalid));
+  }
+  await assertSucceeds(setDoc(newRef, { ...profile, avatar: null }));
+  await assertSucceeds(updateDoc(owner, { name: 'Oma Baru', avatar: null }));
+  await env.withSecurityRulesDisabled((context) =>
+    updateDoc(at(context.firestore(), 'users/owner'), { avatar: 123 }));
+  await assertSucceeds(updateDoc(owner, { email: 'oma@example.com' }));
+});
+
+test('Resep menolak tipe yang salah, termasuk elemen terakhir daftar', async () => {
+  const db = signedIn('owner');
+  const ref = at(db, 'recipes/validated');
+  const valid = {
+    ...recipe(), code: '#RSP-1234', description: 'Resep keluarga',
+    category: 'Nusantara', filterKey: 'nusantara', cookTime: '30 menit', servings: '4 porsi',
+    difficulty: 'Mudah', status: 'published', authorAvatar: 'https://example.com/oma.png',
+    images: ['https://example.com/sup2.png', 'https://example.com/sup3.png'],
+    updatedAt: serverTimestamp(),
+  };
+  const ingredients = Array(12).fill(valid.ingredients[0]);
+  const steps = Array(12).fill(valid.steps[0]);
+  for (const invalid of [
+    { category: 1 }, { description: false }, { images: [123] }, { cookTime: [] },
+    { image: 'file:///foto.jpg' },
+    { ingredients: ['bukan bahan'] }, { ingredients: [...ingredients, ingredients[0]] },
+    { ingredients: [...ingredients.slice(0, -1), { name: 'Ayam', amount: 2 }] },
+    { steps: [...steps.slice(0, -1), { title: 'Rebus', description: 123 }] },
+  ]) {
+    await assertFails(setDoc(ref, { ...valid, ...invalid }));
+    await assertFails(updateDoc(at(db, 'recipes/recipe1'), invalid));
+  }
+  await assertSucceeds(setDoc(ref, { ...valid, ingredients, steps }));
+  await assertSucceeds(updateDoc(ref, {
+    title: 'Diubah',
+    images: ['https://example.com/baru2.png', 'https://example.com/baru3.png'],
+    updatedAt: serverTimestamp(),
+    ingredients: ingredients.map((row) => ({ ...row, name: 'Ikan' })),
+    steps: steps.map((row) => ({ ...row, title: 'Goreng' })),
+  }));
+});
+
+test('Tanggal terbit berasal dari server dan tidak dapat diubah', async () => {
+  const owner = at(signedIn('owner'), 'recipes/tanggal');
+  const future = new Date('2099-01-01T00:00:00Z');
+  await assertFails(setDoc(owner, { ...recipe(), createdAt: future }));
+  const undated = recipe();
+  delete undated.createdAt;
+  await assertFails(setDoc(owner, undated));
+  await assertSucceeds(setDoc(owner, recipe()));
+  await assertFails(updateDoc(owner, { createdAt: future }));
+  await assertFails(updateDoc(at(signedIn('admin'), 'recipes/tanggal'), { createdAt: future }));
+});
+
+test('Kursor katalog melewati resep dengan waktu terbit sama tanpa duplikasi', async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const batch = writeBatch(context.firestore());
+    for (const id of ['a', 'b', 'c']) {
+      batch.set(at(context.firestore(), `recipes/${id}`), { ...recipe(), createdAt: new Date(2000) });
+    }
+    await batch.commit();
+  });
+  const catalog = query(collection(guest(), 'recipes'), orderBy('createdAt', 'desc'));
+  const first = await getDocs(query(catalog, limit(2)));
+  const next = await getDocs(query(catalog, startAfter(first.docs.at(-1)), limit(2)));
+  assert.deepEqual([...first.docs, ...next.docs].map((d) => d.id), ['recipe1', 'c', 'b', 'a']);
+});
+
+test('Dua transaksi favorit untuk resep sama tidak kehilangan perubahan', async () => {
+  const toggle = (db) => runTransaction(db, async (tx) => {
+    const ref = at(db, 'favorites/other__recipe1');
+    const liked = !(await tx.get(ref)).exists();
+    if (liked) tx.set(ref, { uid: 'other', recipeId: 'recipe1', createdAt: serverTimestamp() });
+    else tx.delete(ref);
+    return liked;
+  });
+  const results = await Promise.all([toggle(signedIn('other')), toggle(signedIn('other'))]);
+  assert.deepEqual(results.sort(), [false, true]);
+  assert.equal((await getDoc(at(signedIn('other'), 'favorites/other__recipe1'))).exists(), false);
 });
 test('Koleksi dan subkoleksi lain ditolak tanpa wildcard permisif', async () => {
   for (const db of [guest(), signedIn('owner'), signedIn('admin')]) {

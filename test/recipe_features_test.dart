@@ -1,6 +1,7 @@
 import 'package:dapurkita/models/recipe_model.dart';
 import 'package:dapurkita/screens/beranda_screen.dart';
 import 'package:dapurkita/screens/eksplor_screen.dart';
+import 'package:dapurkita/widgets/ai_fridge_sheet.dart';
 import 'package:dapurkita/widgets/notifications_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -89,5 +90,18 @@ void main() {
     expect(find.text('Masuk akun untuk melihat aktivitas resep Anda.'),
         findsOneWidget);
     expect(find.textContaining('Chef Kenji'), findsNothing);
+  });
+
+  testWidgets('Pencocokan bahan tidak memberi saran yang tak cocok',
+      (tester) async {
+    final recipe = MockData.getInitialRecipes().first.copyWith(
+      title: 'Resep Bubur Oat',
+      ingredients: [Ingredient(id: 'oat', name: 'Oat', amount: '1 mangkuk')],
+    );
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: AiFridgeSheet(recipes: [recipe], onSelectRecipe: (_) {})),
+    ));
+    expect(find.text('Tidak ada resep yang cocok dengan bahan pilihan.'), findsOneWidget);
+    expect(find.text(recipe.title), findsNothing);
   });
 }

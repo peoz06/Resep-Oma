@@ -33,6 +33,21 @@ pengguna/admin serta foto resep. Folder `src/` adalah prototipe React terpisah.
    Untuk web, tambahkan `-d chrome`. Konfigurasi dibaca saat kompilasi;
    perubahan nilainya memerlukan aplikasi dihentikan dan dijalankan ulang.
 
+## Rilis Android
+
+Siapkan [keystore rilis Flutter](https://docs.flutter.dev/deployment/android#sign-the-app).
+Salin `android/key.properties.example` ke `android/key.properties`, lalu isi
+lokasi keystore dan kredensialnya. Path relatif dihitung dari folder `android/`.
+Simpan keystore dan `key.properties` di luar Git. Build debug tidak memerlukan
+konfigurasi ini; build release tidak lagi memakai kunci debug.
+
+```bash
+flutter build appbundle --release --dart-define-from-file=supabase.local.json
+```
+
+Untuk Google Sign-In, daftarkan SHA-1 sertifikat yang menandatangani APK yang
+diterima pengguna. Untuk distribusi lewat Play, gunakan sertifikat Play App Signing.
+
 Panduan lanjutan:
 - [Konfigurasi bucket, upload, dan batas Supabase](SUPABASE_STORAGE.md)
 - [Moderasi, aturan akses, dan tes Firestore](MODERASI_FIREBASE.md)
@@ -42,6 +57,10 @@ Panduan lanjutan:
 
 - Resep publik: cari/filter, unggah/edit/hapus, galeri, draf teks (satu per akun;
   foto harus dipilih ulang), favorit, suka dan recook sekali per akun.
+  Katalog memuat 25 resep per halaman; pencarian dan pengurutan Eksplor memakai
+  resep yang sudah dimuat. Favorit dan Resep Saya dibaca terpisah dari katalog.
+- Pencocokan resep dari bahan kulkas, tanpa model AI. Form terbit mendukung
+  maksimal 12 bahan dan 12 langkah.
 - Ulasan dan rating 1–5, ikuti koki, salin ringkasan resep untuk dibagikan,
   notifikasi aktivitas (suka/recook/ulasan) dalam aplikasi.
   Detail menampilkan maksimal 20 ulasan terbaru; rata-rata bukan dari seluruh
@@ -51,9 +70,8 @@ Panduan lanjutan:
   pertama tetap dibuat lewat Firebase Console.
 - Daftar/login, pemulihan sandi, email verifikasi, profil, tema gelap, mode tamu.
 
-Pemilik project menyatakan `firestore.rules` terbaru sudah dipublikasikan di
-Firebase Console. Akses baca resep tanpa login sudah diuji pada project nyata;
-tes emulator untuk aturan lain tetap dapat dijalankan:
+Pemilik project pernah menguji baca resep tanpa login pada project nyata.
+Untuk memeriksa aturan yang ada di repo ini, jalankan tes emulator berikut:
 
 ```bash
 firebase emulators:exec --only firestore --project demo-resep-oma "npm --prefix test/firestore test"
@@ -63,15 +81,18 @@ Firebase CLI terbaru memerlukan Java 21 untuk emulator.
 
 ## Firestore dan akun admin
 
-Rules terbaru sudah dipublikasikan menurut pemilik project. Pembacaan resep
-tanpa login dan penolakan baca profil tanpa login sudah diuji; aturan produksi
-lain belum diverifikasi langsung. Commit atau pull tidak men-deploy rules.
-
-Perbaikan audit memerlukan publikasi ulang `firestore.rules` dan indeks notifikasi
-di `firestore.indexes.json` oleh pemilik project. Tinjau lalu deploy dengan
+Commit atau pull tidak memublikasikan rules. Sebelum meluncurkan perbaikan audit,
+periksa resep lama dan isi `createdAt` yang hilang atau bukan `Timestamp` dengan
+waktu terbit yang benar. Query katalog melewati dokumen tanpa field ini. Tinjau
+dan publikasikan `firestore.rules` serta `firestore.indexes.json` dengan
 `firebase deploy --only firestore:rules,firestore:indexes --project resep-oma`,
 atau buat indeks `notifications` (`recipientId` ascending, `createdAt` descending)
-di Console. Tunggu indeks selesai dibuat sebelum menguji daftar notifikasi.
+di Console setelah memublikasikan rules. Tunggu indeks siap, lalu uji dengan
+build Android baru. Laporan dari build lama memakai ID yang tidak lagi diterima.
+
+Untuk upload foto, aktifkan integrasi Firebase di Supabase dan terapkan migrasi
+Storage sesuai [panduan bucket](SUPABASE_STORAGE.md). Build lama yang memakai
+upload anonim tidak bisa mengunggah setelah policy baru aktif.
 
 Akun admin pertama harus diatur manual di **Firestore Console**. Setelah akun
 terdaftar melalui Firebase Auth, gunakan dokumen `users/<UID Auth>` dengan
@@ -97,15 +118,14 @@ Tes rules emulator beserta prasyarat Node/Java dijelaskan di
 
 ## Keterbatasan yang diketahui
 
-- Upload Supabase masih menggunakan akses anon. UID pada path hanya untuk
-  pengelompokan, bukan verifikasi kepemilikan di server; API upload dapat
-  dipanggil di luar aplikasi.
+- Upload Supabase memeriksa identitas Firebase dan kepemilikan UID setelah
+  policy baru aktif. Kuota per pengguna belum tersedia.
 - Foto lama atau file yang berhasil diunggah saat penyimpanan Firestore gagal
   tidak dihapus otomatis. Pembersihan dilakukan manual oleh pemilik project.
 - Upload avatar yang selesai setelah pergantian akun tidak dipasang ke akun
   baru; file yang sempat diunggah tetap harus dibersihkan manual.
-- Penghapusan akun beserta seluruh data dan foto, penghapusan otomatis file
-  Supabase, serta pagination katalog belum tersedia; perlu backend tepercaya.
+- Penghapusan akun beserta seluruh data dan foto serta penghapusan otomatis file
+  Supabase belum tersedia; perlu backend tepercaya.
 - Verifikasi email tersedia, tetapi akun lama yang belum diverifikasi belum
   ditolak otomatis. Perubahan email baru tercermin pada profil setelah tautan
   dikonfirmasi dan sesi berikutnya memuat ulang profil.

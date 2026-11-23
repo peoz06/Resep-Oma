@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'auth_service.dart';
 import 'supabase_service.dart';
 
 class ImageUploadException implements Exception {
@@ -12,7 +13,7 @@ class ImageUploadException implements Exception {
   String toString() => message;
 }
 
-/// Unggah foto melalui akses anon Supabase; Firebase tetap menyimpan profil/resep.
+/// Unggah foto ke Supabase memakai sesi Firebase.
 /// File tidak dihapus otomatis karena Storage dan Firestore tidak berbagi transaksi.
 class StorageService {
   static bool get isReady => SupabaseService.isReady;
@@ -56,7 +57,9 @@ class StorageService {
     required String uid,
   }) async {
     if (!isReady) throw ImageUploadException(SupabaseService.humanError);
-    if (uid.isEmpty ||
+    if (!AuthService.hasRealSession ||
+        AuthService.firebaseUser?.uid != uid ||
+        uid.isEmpty ||
         uid == '.' ||
         uid == '..' ||
         uid.contains(RegExp(r'[/\\]'))) {
@@ -74,7 +77,6 @@ class StorageService {
           contentType == 'image/jpeg' ? 'jpg' : contentType.split('/').last;
       final path = '$uid/${DateTime.now().microsecondsSinceEpoch}.$extension';
       final storage = Supabase.instance.client.storage.from(bucket);
-      // shortcut: policy anon tidak memverifikasi UID pada path; gunakan auth server sebelum akses publik berskala besar.
       // Tanpa upsert, benturan path ditolak alih-alih menimpa foto yang sudah ada.
       await storage.uploadBinary(
         path,

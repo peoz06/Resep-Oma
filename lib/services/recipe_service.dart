@@ -16,6 +16,11 @@ class ServiceResult {
   const ServiceResult({required this.ok, this.message = '', this.code});
 }
 
+typedef RecipePage = ({
+  List<Recipe> recipes,
+  DocumentSnapshot<Map<String, dynamic>>? next,
+});
+
 /// Lapisan data aplikasi berbasis Cloud Firestore.
 ///
 /// Koleksi yang dipakai:
@@ -55,6 +60,9 @@ class RecipeService {
       _db.collection('users');
 
   static const Duration _readTimeout = Duration(seconds: 10);
+  static const int _recipePageSize = 25;
+  static const int maxRecipeRows = 12;
+  static const int maxReportReason = 500;
 
   /// Urutkan dokumen terbaru ke bawah berdasarkan field `createdAt`.
   static int _newestFirst(
@@ -117,47 +125,72 @@ class RecipeService {
 
   // ───────────────────────── RESEP ─────────────────────────
 
-  /// Ambil semua resep yang sudah diterbitkan, diurutkan terbaru.
-  static Future<List<Recipe>> fetchRecipes({
-    String? currentUid,
-    Set<String> favoriteIds = const {},
-    Map<String, DateTime> favoriteDates = const {},
-    Set<String> likedIds = const {},
+  /// Ambil satu halaman katalog, mulai dari resep terbaru.
+  static Future<RecipePage> fetchRecipes({
+    DocumentSnapshot<Map<String, dynamic>>? after,
   }) async {
-    if (!isReady) return const [];
+    if (!isReady) return (recipes: const <Recipe>[], next: null);
+    var query = _recipes.orderBy('createdAt', descending: true).limit(_recipePageSize);
+    if (after != null) query = query.startAfterDocument(after);
+
     // Cache kosong saat koneksi lambat bukan bukti katalog di server kosong.
     QuerySnapshot<Map<String, dynamic>> snap;
     try {
-      snap = await _recipes.get(const GetOptions(source: Source.server))
+      snap = await query.get(const GetOptions(source: Source.server))
           .timeout(_readTimeout);
     } on TimeoutException {
-      snap = await _recipes.get(const GetOptions(source: Source.cache));
+      snap = await query.get(const GetOptions(source: Source.cache));
       if (snap.docs.isEmpty) rethrow;
     } on FirebaseException catch (e) {
       if (e.code != 'unavailable') rethrow;
-      snap = await _recipes.get(const GetOptions(source: Source.cache));
+      snap = await query.get(const GetOptions(source: Source.cache));
       if (snap.docs.isEmpty) rethrow;
     }
-    final docs = snap.docs.toList()..sort(_newestFirst);
-    return docs
-        .map((doc) => Recipe.fromFirestore(
-              doc.id,
-              doc.data(),
-              isFavorite: favoriteIds.contains(doc.id),
-              favoritedAt: favoriteDates[doc.id],
-              isLiked: likedIds.contains(doc.id),
-              currentUid: currentUid,
-            ))
-        .toList();
+    final docs = snap.docs;
+    return (
+      recipes: docs.map(_decodeRecipe).whereType<Recipe>().toList(),
+      // Pakai dokumen mentah terakhir agar dokumen rusak tidak memutus kursor.
+      next: docs.isNotEmpty && (docs.length == _recipePageSize || snap.metadata.isFromCache)
+          ? docs.last
+          : null,
+    );
   }
 
-  static Future<Recipe?> fetchRecipe(String id, {String? currentUid}) async {
+  static Recipe? _decodeRecipe(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data();
+    if (data == null) return null;
+    try {
+      return Recipe.fromFirestore(doc.id, data);
+    } on TypeError {
+      return null;
+    }
+  }
+
+  static Future<Recipe?> fetchRecipe(String id) async {
     if (!isReady) return null;
     final doc = await _recipes.doc(id)
         .get(const GetOptions(source: Source.server)).timeout(_readTimeout);
-    return doc.exists
-        ? Recipe.fromFirestore(doc.id, doc.data()!, currentUid: currentUid)
-        : null;
+    return _decodeRecipe(doc);
+  }
+
+  static Future<List<Recipe>> fetchOwnRecipes(String uid) async {
+    if (!isReady) return const [];
+    final snap = await _read(_recipes.where('authorId', isEqualTo: uid));
+    final docs = snap.docs.toList()..sort(_newestFirst);
+    return docs.map(_decodeRecipe).whereType<Recipe>().toList();
+  }
+
+  static Future<List<Recipe>> fetchRecipesById(Iterable<String> ids) async {
+    if (!isReady) return const [];
+    final remaining = ids.toList();
+    final recipes = <Recipe>[];
+    for (var start = 0; start < remaining.length; start += 30) {
+      final snap = await _read(_recipes.where(
+        FieldPath.documentId, whereIn: remaining.skip(start).take(30).toList(),
+      ));
+      recipes.addAll(snap.docs.map(_decodeRecipe).whereType<Recipe>());
+    }
+    return recipes;
   }
 
   static Future<ServiceResult> saveRecipe({
@@ -319,9 +352,8 @@ class RecipeService {
     final snap = await _read(_favorites.where('uid', isEqualTo: uid));
     return {
       for (final doc in snap.docs)
-        (doc.data()['recipeId'] ?? '') as String:
-            (doc.data()['createdAt'] as Timestamp?)?.toDate() ??
-                DateTime.fromMillisecondsSinceEpoch(0),
+        if (doc.data() case {'recipeId': String id})
+          id: DateTime.fromMillisecondsSinceEpoch(_createdAtOf(doc)),
     };
   }
 
@@ -333,18 +365,19 @@ class RecipeService {
   }) async {
     if (!isReady) return null;
     try {
-      final ref = _favorites.doc(_favId(uid, recipeId));
-      final snap = await _readDoc(ref);
-      if (snap.exists) {
-        await ref.delete();
-        return false;
-      }
-      await ref.set({
-        'uid': uid,
-        'recipeId': recipeId,
-        'createdAt': FieldValue.serverTimestamp(),
+      return await _db.runTransaction<bool>((tx) async {
+        final ref = _favorites.doc(_favId(uid, recipeId));
+        if ((await tx.get(ref)).exists) {
+          tx.delete(ref);
+          return false;
+        }
+        tx.set(ref, {
+          'uid': uid,
+          'recipeId': recipeId,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        return true;
       });
-      return true;
     } catch (_) {
       return null;
     }
@@ -353,7 +386,7 @@ class RecipeService {
   static Future<Set<String>> fetchLikedIds(String uid) async {
     if (!isReady) return const {};
     final snap = await _read(_likes.where('uid', isEqualTo: uid));
-    return snap.docs.map((d) => d.data()['recipeId'] as String).toSet();
+    return snap.docs.map((d) => d.data()['recipeId']).whereType<String>().toSet();
   }
 
   /// Like dan angka pada resep selalu diubah dalam satu transaksi.
@@ -551,21 +584,23 @@ class RecipeService {
   static Map<String, dynamic> _reportToMap(
       DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? <String, dynamic>{};
+    String text(String key, [String fallback = '']) =>
+        data[key] is String ? data[key] as String : fallback;
     return {
       'id': doc.id,
-      'recipeId': (data['recipeId'] ?? '') as String,
-      'recipeTitle': (data['recipeTitle'] ?? 'Resep dihapus') as String,
-      'reporterName': (data['reporterName'] ?? 'Anonim') as String,
-      'reporterId': (data['reporterId'] ?? '') as String,
-      'reason': (data['reason'] ?? '') as String,
-      'status': (data['status'] ?? 'open') as String,
+      'recipeId': text('recipeId'),
+      'recipeTitle': text('recipeTitle', 'Judul tidak tersedia'),
+      'reporterName': text('reporterName', 'Anonim'),
+      'reporterId': text('reporterId'),
+      'reason': text('reason'),
+      'status': text('status', 'open'),
       'createdAt': data['createdAt'],
     };
   }
 
-  static Future<List<Map<String, dynamic>>> fetchReports() async {
+  static Future<List<Map<String, dynamic>>> fetchReports({bool openOnly = false}) async {
     if (!isReady) return const [];
-    final snap = await _read(_reports);
+    final snap = await _read(openOnly ? _reports.where('status', isEqualTo: 'open') : _reports);
     final docs = snap.docs.toList()..sort(_newestFirst);
     return docs.map(_reportToMap).toList();
   }
@@ -573,21 +608,30 @@ class RecipeService {
   static Future<ServiceResult> submitReport({
     required String reporterId,
     required String recipeId,
-    required String recipeTitle,
     required String reason,
   }) async {
     if (!isReady) return _notConfigured;
+    final trimmed = reason.trim();
+    if (trimmed.isEmpty || trimmed.length > maxReportReason) {
+      return const ServiceResult(ok: false, message: 'Isi alasan laporan, maksimal 500 karakter.');
+    }
     try {
-      final profile = await _readDoc(_users.doc(reporterId));
+      final [profile, recipe] = await Future.wait([
+        _readDoc(_users.doc(reporterId)), _readDoc(_recipes.doc(recipeId)),
+      ]);
+      final title = recipe.data()?['title'];
+      if (title is! String) {
+        return const ServiceResult(ok: false, message: 'Resep tidak tersedia untuk dilaporkan.');
+      }
       if (!profile.exists) {
         return const ServiceResult(ok: false, message: 'Profil pelapor tidak ditemukan.');
       }
-      await _reports.add({
+      await _reports.doc(_favId(reporterId, recipeId)).set({
         'recipeId': recipeId,
-        'recipeTitle': recipeTitle,
+        'recipeTitle': title,
         'reporterId': reporterId,
         'reporterName': profile.data()!['name'],
-        'reason': reason,
+        'reason': trimmed,
         'status': 'open',
         'createdAt': FieldValue.serverTimestamp(),
       });
@@ -595,6 +639,12 @@ class RecipeService {
         ok: true,
         message: 'Laporan terkirim. Terima kasih sudah menjaga komunitas.',
       );
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        return const ServiceResult(ok: false, message:
+            'Laporan ditolak. Resep mungkin berubah atau sudah pernah Anda laporkan.');
+      }
+      return ServiceResult(ok: false, message: errorMessage(e));
     } catch (e) {
       return ServiceResult(ok: false, message: errorMessage(e));
     }

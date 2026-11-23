@@ -1,8 +1,9 @@
 # Foto di Supabase Storage
 
 Firebase Auth tetap menangani login email/password dan Google. Firestore tetap
-menyimpan profil, resep, dan URL foto. Supabase hanya menyimpan file gambar.
-Tidak ada integrasi Third-Party Auth, custom claim, atau sesi login Supabase.
+menyimpan profil, resep, dan URL foto. Supabase hanya menyimpan file gambar dan
+memverifikasi token Firebase lewat integrasi Third-Party Auth; tidak ada login
+Supabase terpisah.
 
 ## Konfigurasi lokal
 
@@ -36,20 +37,31 @@ Tanpa konfigurasi Supabase, aplikasi tetap terbuka dan URL foto lama tetap
 ditampilkan. Upload baru menampilkan error konfigurasi. Kesiapan Storage
 terpisah dari kesiapan Firebase, dan tidak menjamin koneksi/policy bucket benar.
 
-## Bucket dan batas upload
+## Aktifkan akses upload
+
+1. Di Supabase Dashboard, buka **Authentication → Third-party Auth** dan
+   tambahkan proyek Firebase `resep-oma`. Untuk staging, cocokkan ID Firebase
+   yang didaftarkan dengan `iss` dan `aud` di migrasi.
+2. Terapkan [`20261123000100_secure_photo_uploads.sql`](supabase/migrations/20261123000100_secure_photo_uploads.sql)
+   melalui migrasi Supabase atau sekali lewat SQL Editor. Tinjau policy lama
+   yang tidak diperlukan. Policy baru tetap memblokir upload tanpa identitas
+   meski policy `INSERT` permisif lama masih ada.
+3. Uji Android di proyek tes sebelum mengaktifkan policy produksi. Build lama
+   yang tidak mengirim token Firebase tidak bisa lagi mengunggah foto.
 
 - Bucket public: `avatars` dan `recipe-images`.
-- Policy hanya INSERT untuk `anon`/`authenticated`; aplikasi memakai `anon`.
+- Aplikasi hanya bisa INSERT dengan token Firebase valid dari akun email atau
+  Google. PostgreSQL dapat memakai peran `anon` untuk token Firebase tanpa custom
+  claim `role`; policy tetap menolak permintaan tanpa identitas Firebase.
 - Path di dalam bucket: `<firebaseUid>/<timestamp-mikrodetik>.<ext>`.
+- UID pada path harus sama dengan `sub` token yang diverifikasi Supabase.
 - Maksimal 5 MiB (5 × 1024 × 1024 byte) per foto; JPEG, PNG, atau WebP.
 - Upload menggunakan bytes, content type berdasarkan header file, dan `upsert: false`.
-- Konversikan HEIC/GIF sebelum upload. Atur batas ukuran dan MIME pada bucket juga.
+- Bucket juga membatasi ukuran dan MIME. Konversikan HEIC/GIF sebelum upload.
 
-UID dipakai untuk pengelompokan, bukan bukti kepemilikan di server. Policy anon
-memungkinkan siapa pun yang mengakses API mengunggah file; pemeriksaan login dan
-validasi Flutter bisa dilewati. Jalur ini tidak aman untuk membatasi upload per
-pengguna atau mencegah penyalahgunaan kuota. Aktifkan autentikasi tepercaya dan
-policy kepemilikan sebelum penggunaan publik berskala besar.
+Policy tidak membaca status moderasi Firestore. Jika akses akun ke Storage juga
+perlu dihentikan, tangani akun dan token lewat Firebase Auth. Kuota per akun dan
+pemeriksaan isi file di server belum tersedia.
 
 ## Penyimpanan dan kegagalan
 
@@ -65,9 +77,7 @@ file yang sama. File lama setelah penggantian foto/penghapusan resep juga tetap
 ada; pembersihan dilakukan manual oleh pemilik project bila diperlukan.
 
 Upload avatar diikat ke UID awal: jika akun berganti saat upload, foto tidak
-dipasang ke akun baru. File yang terlanjur diunggah tetap perlu dibersihkan
-manual. Policy upload anon tidak bisa menjamin kepemilikan file di server;
-batasi akses bucket dengan backend tepercaya sebelum digunakan secara publik.
+dipasang ke akun baru. File yang terlanjur diunggah tetap perlu dibersihkan manual.
 
 ## Pemeriksaan
 
@@ -76,7 +86,11 @@ flutter analyze --no-pub
 flutter test --no-pub
 ```
 
-Tes lokal tidak mengunggah file ke bucket live. Uji manual: login, ganti avatar,
+Setelah migrasi di basis data tes, jalankan
+[`storage_photo_policy.sql`](supabase/tests/storage_photo_policy.sql)
+dengan `psql -v ON_ERROR_STOP=1 -f supabase/tests/storage_photo_policy.sql`.
+Tes SQL mengecek policy dan konfigurasi bucket, bukan verifikasi JWT atau upload
+HTTP. Uji manual di Android: login, ganti avatar,
 buat/edit resep dengan foto, buka kembali aplikasi, dan pastikan URL di Firestore
 mengarah ke bucket public yang benar. Periksa juga penolakan ukuran/tipe file
-dan pesan gagal menyimpan ketika Firestore menolak operasi.
+serta penolakan upload tanpa akun.

@@ -10,7 +10,9 @@ class AdminRecipesScreen extends StatefulWidget {
   final ValueChanged<Recipe> onSelectRecipe;
   final VoidCallback onNavigateToUpload;
   final Future<void> Function(String) onDeleteRecipe;
-  final VoidCallback? onRefreshRecipes;
+  final ValueChanged<String>? onRecipeChanged;
+  final VoidCallback? onLoadMore;
+  final bool loadingMore;
   final ValueChanged<String>? onShowToast;
 
   const AdminRecipesScreen({
@@ -19,7 +21,9 @@ class AdminRecipesScreen extends StatefulWidget {
     required this.onSelectRecipe,
     required this.onNavigateToUpload,
     required this.onDeleteRecipe,
-    this.onRefreshRecipes,
+    this.onRecipeChanged,
+    this.onLoadMore,
+    this.loadingMore = false,
     this.onShowToast,
   });
 
@@ -49,7 +53,7 @@ class _AdminRecipesScreenState extends State<AdminRecipesScreen> {
     // Muat laporan dari Firestore
     late final List<Map<String, dynamic>> reports;
     try {
-      reports = await RecipeService.fetchReports();
+      reports = await RecipeService.fetchReports(openOnly: true);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -320,7 +324,7 @@ class _AdminRecipesScreenState extends State<AdminRecipesScreen> {
                     const Icon(Icons.dinner_dining,
                         color: AppColors.primary, size: 20),
                     const SizedBox(width: 8),
-                    const Text('Total Resep: ',
+                    const Text('Resep dimuat: ',
                         style: TextStyle(
                             fontSize: 12, color: AppColors.secondary)),
                     Text('${_adminList.length}',
@@ -511,7 +515,7 @@ class _AdminRecipesScreenState extends State<AdminRecipesScreen> {
                                 item['id'] as String, item['verified'] != true);
                             if (!mounted) return;
                             widget.onShowToast?.call(result.message);
-                            if (result.ok) widget.onRefreshRecipes?.call();
+                            if (result.ok) widget.onRecipeChanged?.call(item['id'] as String);
                           },
                           icon: Icon(item['verified'] == true
                               ? Icons.verified : Icons.verified_outlined,
@@ -528,6 +532,11 @@ class _AdminRecipesScreenState extends State<AdminRecipesScreen> {
                 }),
               ],
             ),
+          ),
+        if (widget.onLoadMore != null)
+          OutlinedButton(
+            onPressed: widget.loadingMore ? null : widget.onLoadMore,
+            child: Text(widget.loadingMore ? 'Memuat...' : 'Muat lebih banyak resep'),
           ),
         const SizedBox(height: 20),
       ],

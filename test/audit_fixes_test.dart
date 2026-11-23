@@ -3,6 +3,7 @@
 
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_firestore_platform_interface/src/pigeon/messages.pigeon.dart' as fs;
 import 'package:dapurkita/screens/beranda_screen.dart';
 import 'package:dapurkita/screens/eksplor_screen.dart';
@@ -253,6 +254,81 @@ void main() {
     expect(updated.isLiked, isTrue);
     expect(search.text, 'Sup');
     expect(scroll.pixels, offset);
+  });
+
+  testWidgets('Katalog menambah halaman meski dokumen terakhir halaman pertama rusak', (tester) async {
+    tester.view.physicalSize = const Size(600, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final time = Timestamp.fromDate(DateTime(2026, 11, 20));
+    var queries = 0;
+    _host('queryGet', (args) {
+      expect(args[1], 'recipes');
+      final params = args[3]! as fs.InternalQueryParameters;
+      expect(params.limit, 25);
+      expect(params.orderBy!.first, ['createdAt', true]);
+      if (++queries == 1) {
+        expect(params.startAfter, isNull);
+        return _query([
+          for (var i = 0; i < 24; i++)
+            _doc('recipes/r$i', {..._recipe, 'createdAt': time}),
+          _doc('recipes/rusak', {..._recipe, 'createdAt': time, 'ingredients': [42]}),
+        ]);
+      }
+      expect(params.startAfter, [time, 'rusak']);
+      return _query([_doc('recipes/halaman-2', {
+        ..._recipe, 'title': 'Opor halaman kedua', 'createdAt': time,
+      })]);
+    });
+    await tester.pumpWidget(MaterialApp(theme: AppTheme.lightTheme(), home: MainNavigationScreen(
+      darkMode: false, onToggleDarkMode: (_) {},
+    )));
+    await tester.pumpAndSettle();
+    tester.widget<BerandaScreen>(find.byType(BerandaScreen)).onNavigateToExplore();
+    await tester.pumpAndSettle();
+    expect(tester.widget<EksplorScreen>(find.byType(EksplorScreen)).recipes, hasLength(24));
+    await tester.enterText(find.byType(TextField), 'Opor');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    final loadMore = find.widgetWithText(OutlinedButton, 'Muat lebih banyak resep');
+    await tester.scrollUntilVisible(loadMore, 300,
+        scrollable: find.byType(Scrollable).first);
+    await Scrollable.ensureVisible(tester.element(loadMore), alignment: 0.5);
+    await tester.pumpAndSettle();
+    await tester.tap(loadMore);
+    await tester.pumpAndSettle();
+    final explore = tester.widget<EksplorScreen>(find.byType(EksplorScreen));
+    expect(explore.recipes.last.title, 'Opor halaman kedua');
+    expect(find.text('Opor halaman kedua'), findsOneWidget);
+    expect(explore.onLoadMore, isNull);
+    expect(queries, 2);
+  });
+
+  test('Resep saya dan favorit dibaca terpisah dari halaman katalog', () async {
+    var reads = 0;
+    _host('queryGet', (args) {
+      expect(args[1], 'recipes');
+      final params = args[3]! as fs.InternalQueryParameters;
+      if (++reads == 1) {
+        expect(params.where, contains(equals(['authorId', '==', 'owner'])));
+        return _query([_doc('recipes/milik', _recipe)]);
+      }
+      expect(params.where!.single!.sublist(1), ['in', ['favorit-lama']]);
+      return _query([_doc('recipes/favorit-lama', _recipe)]);
+    });
+    expect((await RecipeService.fetchOwnRecipes('owner')).single.id, 'milik');
+    expect((await RecipeService.fetchRecipesById(['favorit-lama'])).single.id, 'favorit-lama');
+  });
+
+  test('Laporan lama yang rusak tidak menutup daftar moderasi', () async {
+    _host('queryGet', (_) => _query([
+      _doc('reports/rusak', {'recipeId': 'r1', 'recipeTitle': 10}),
+      _doc('reports/valid', {'recipeId': 'r1', 'recipeTitle': 'Sup Ayam'}),
+    ]));
+    final reports = await RecipeService.fetchReports();
+    expect(reports.map((report) => report['recipeTitle']),
+        containsAll(['Judul tidak tersedia', 'Sup Ayam']));
   });
 
   testWidgets('Query notifikasi dibatasi; penanda hanya mencari satu yang belum dibaca', (tester) async {

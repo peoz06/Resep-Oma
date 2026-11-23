@@ -270,7 +270,7 @@ class _BerandaScreenState extends State<BerandaScreen> {
         ),
         const SizedBox(height: 24),
 
-        // Interactive AI Fridge Matching Card
+        // Cari resep berdasarkan bahan.
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -286,7 +286,7 @@ class _BerandaScreenState extends State<BerandaScreen> {
                   color: AppColors.primary,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.auto_awesome, color: Colors.white, size: 22),
+                child: const Icon(Icons.kitchen_outlined, color: Colors.white, size: 22),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -299,7 +299,7 @@ class _BerandaScreenState extends State<BerandaScreen> {
                     ),
                     const SizedBox(height: 2),
                     const Text(
-                      'Kocok bahan di kulkasmu sekarang!',
+                      'Cari resep dari bahan di kulkasmu.',
                       style: TextStyle(color: AppColors.onSurfaceVariant, fontSize: 12),
                     ),
                   ],
@@ -320,7 +320,7 @@ class _BerandaScreenState extends State<BerandaScreen> {
                   ),
                 ),
                 child: const Text(
-                  'Coba AI',
+                  'Cocokkan bahan',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                 ),
               ),

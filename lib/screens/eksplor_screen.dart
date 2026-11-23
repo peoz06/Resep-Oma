@@ -8,6 +8,8 @@ class EksplorScreen extends StatefulWidget {
   final ValueChanged<Recipe> onSelectRecipe;
   final ValueChanged<String> onToggleFavorite;
   final ValueChanged<String>? onShowToast;
+  final VoidCallback? onLoadMore;
+  final bool loadingMore;
 
   const EksplorScreen({
     super.key,
@@ -15,6 +17,8 @@ class EksplorScreen extends StatefulWidget {
     required this.onSelectRecipe,
     required this.onToggleFavorite,
     this.onShowToast,
+    this.onLoadMore,
+    this.loadingMore = false,
   });
 
   @override
@@ -65,9 +69,7 @@ class _EksplorScreenState extends State<EksplorScreen> {
       filtered.sort((a, b) => b.recooksCount.compareTo(a.recooksCount));
     }
 
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      children: [
+    final headers = <Widget>[
         // Search & Filter Row
         Row(
           children: [
@@ -342,6 +344,11 @@ class _EksplorScreenState extends State<EksplorScreen> {
           ],
         ),
         const SizedBox(height: 12),
+        if (widget.onLoadMore != null)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 8),
+            child: Text('Cari dan urutkan resep yang sudah dimuat.'),
+          ),
 
         // Tabs: Terpopuler, Terbaru, Paling Banyak Di-recook
         Row(
@@ -355,10 +362,30 @@ class _EksplorScreenState extends State<EksplorScreen> {
         ),
         const SizedBox(height: 16),
 
-        // Recipe Stack
-        ...filtered.map((r) => _buildExploreRecipeCard(r)),
-        const SizedBox(height: 24),
-      ],
+    ];
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      itemCount: headers.length + filtered.length + 1,
+      itemBuilder: (context, index) {
+        if (index < headers.length) return headers[index];
+        final recipeIndex = index - headers.length;
+        if (recipeIndex < filtered.length) {
+          return _buildExploreRecipeCard(filtered[recipeIndex]);
+        }
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 24),
+          child: Column(
+            children: [
+              if (filtered.isEmpty) const Text('Tidak ada resep yang cocok.'),
+              if (widget.onLoadMore != null)
+                OutlinedButton(
+                  onPressed: widget.loadingMore ? null : widget.onLoadMore,
+                  child: Text(widget.loadingMore ? 'Memuat...' : 'Muat lebih banyak resep'),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 

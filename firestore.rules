@@ -20,6 +20,14 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == 'admin';
     }
 
+    function publicImage(value) {
+      return value is string && (value == '' || value.matches('https?://.+'));
+    }
+
+    function nullableImage(value) {
+      return value == null || publicImage(value);
+    }
+
     function publicRecipe(data) {
       // Whitelist ini bukan penyaring data pribadi di teks bebas, URL, atau isi nested.
       return data.keys().hasOnly([
@@ -30,7 +38,81 @@ service cloud.firestore {
       ])
         && data.authorId is string && data.authorName is string
         && data.title is string && data.title.size() > 0 && data.title.size() <= 60
-        && data.image is string && data.ingredients is list && data.steps is list;
+        && publicImage(data.image) && data.ingredients is list && data.steps is list
+        && data.get('code', '') is string
+        && data.get('description', '') is string
+        && data.get('category', '') is string
+        && data.get('filterKey', '') is string
+        && data.get('cookTime', '') is string
+        && data.get('servings', '') is string
+        && data.get('difficulty', '') is string
+        && data.get('status', 'published') is string
+        && data.get('images', []) is list
+        && nullableImage(data.get('authorAvatar', null))
+        && data.get('verified', false) is bool
+        && data.get('likesCount', 0) is int
+        && data.get('recooksCount', 0) is int;
+    }
+
+    // shortcut: 12 bahan dan 12 langkah agar validasi di bawah 1000 ekspresi; ubah skema jika perlu lebih.
+    function validIngredients(rows) {
+      let n = rows.size();
+      return n <= 12
+        && (n < 1 || (rows[0].name is string && rows[0].amount is string))
+        && (n < 2 || (rows[1].name is string && rows[1].amount is string))
+        && (n < 3 || (rows[2].name is string && rows[2].amount is string))
+        && (n < 4 || (rows[3].name is string && rows[3].amount is string))
+        && (n < 5 || (rows[4].name is string && rows[4].amount is string))
+        && (n < 6 || (rows[5].name is string && rows[5].amount is string))
+        && (n < 7 || (rows[6].name is string && rows[6].amount is string))
+        && (n < 8 || (rows[7].name is string && rows[7].amount is string))
+        && (n < 9 || (rows[8].name is string && rows[8].amount is string))
+        && (n < 10 || (rows[9].name is string && rows[9].amount is string))
+        && (n < 11 || (rows[10].name is string && rows[10].amount is string))
+        && (n < 12 || (rows[11].name is string && rows[11].amount is string));
+    }
+
+    function validSteps(rows) {
+      let n = rows.size();
+      return n <= 12
+        && (n < 1 || (rows[0].title is string && rows[0].description is string))
+        && (n < 2 || (rows[1].title is string && rows[1].description is string))
+        && (n < 3 || (rows[2].title is string && rows[2].description is string))
+        && (n < 4 || (rows[3].title is string && rows[3].description is string))
+        && (n < 5 || (rows[4].title is string && rows[4].description is string))
+        && (n < 6 || (rows[5].title is string && rows[5].description is string))
+        && (n < 7 || (rows[6].title is string && rows[6].description is string))
+        && (n < 8 || (rows[7].title is string && rows[7].description is string))
+        && (n < 9 || (rows[8].title is string && rows[8].description is string))
+        && (n < 10 || (rows[9].title is string && rows[9].description is string))
+        && (n < 11 || (rows[10].title is string && rows[10].description is string))
+        && (n < 12 || (rows[11].title is string && rows[11].description is string));
+    }
+
+    function validGallery(images) {
+      return images.size() <= 2
+        && (images.size() < 1 || publicImage(images[0]))
+        && (images.size() < 2 || publicImage(images[1]));
+    }
+
+    function validRecipeEdit(before, after) {
+      let changed = after.diff(before).affectedKeys();
+      return !changed.hasAny(['createdAt'])
+        && (!changed.hasAny(['ingredients']) || validIngredients(after.ingredients))
+        && (!changed.hasAny(['steps']) || validSteps(after.steps))
+        && (!changed.hasAny(['images']) || validGallery(after.get('images', [])));
+    }
+
+    function validProfile(data, before) {
+      let changed = data.diff(before).affectedKeys();
+      return (!changed.hasAny(['name']) || data.get('name', '') is string)
+        && (!changed.hasAny(['email']) || data.get('email', '') is string)
+        && (!changed.hasAny(['avatar']) || nullableImage(data.get('avatar', null)))
+        && (!changed.hasAny(['provider']) || data.get('provider', '') is string)
+        && (!changed.hasAny(['code']) || data.get('code', '') is string)
+        && (!changed.hasAny(['pending']) || data.get('pending', false) is bool)
+        && (!changed.hasAny(['createdAt']) || data.get('createdAt', request.time) is timestamp)
+        && (!changed.hasAny(['updatedAt']) || data.get('updatedAt', request.time) is timestamp);
     }
 
     function counterChange(recipeId, kind, delta) {
@@ -54,8 +136,13 @@ service cloud.firestore {
         && request.resource.data.verified == false
         && request.resource.data.likesCount == 0
         && request.resource.data.recooksCount == 0
-        && publicRecipe(request.resource.data);
-      allow update: if publicRecipe(request.resource.data) && (
+        && request.resource.data.createdAt == request.time
+        && publicRecipe(request.resource.data)
+        && validIngredients(request.resource.data.ingredients)
+        && validSteps(request.resource.data.steps)
+        && validGallery(request.resource.data.get('images', []));
+      allow update: if publicRecipe(request.resource.data)
+        && validRecipeEdit(resource.data, request.resource.data) && (
         admin() || (
           activeUser() && resource.data.authorId == request.auth.uid
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -100,7 +187,7 @@ service cloud.firestore {
 
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || admin());
-      allow create: if signedIn()
+      allow create: if signedIn() && validProfile(request.resource.data, {})
         && request.resource.data.keys().hasOnly([
           'name', 'email', 'role', 'status', 'avatar', 'provider', 'code',
           'pending', 'createdAt', 'updatedAt'
@@ -113,7 +200,7 @@ service cloud.firestore {
             && request.resource.data.status == 'baru'
             && request.resource.data.pending == true)
         );
-      allow update: if signedIn() && (
+      allow update: if signedIn() && validProfile(request.resource.data, resource.data) && (
         (request.auth.uid == uid && activeUser()
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['name', 'email', 'avatar', 'updatedAt']))
@@ -247,14 +334,24 @@ service cloud.firestore {
     match /reports/{reportId} {
       allow create: if activeUser()
         && request.resource.data.reporterId == request.auth.uid
-        && request.resource.data.get('reporterName', get(/databases/$(database)/documents/users/$(request.auth.uid)).data.name)
-          == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.name
+        && request.resource.data.reporterName is string
+        && request.resource.data.reporterName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.name
+        && request.resource.data.recipeId is string
+        && reportId == request.auth.uid + '__' + request.resource.data.recipeId
+        && request.resource.data.recipeTitle is string
+        && request.resource.data.recipeTitle == get(/databases/$(database)/documents/recipes/$(request.resource.data.recipeId)).data.title
         && request.resource.data.status == 'open'
         && request.resource.data.reason is string && request.resource.data.reason.size() > 0
+        && request.resource.data.reason.size() <= 500
+        && request.resource.data.createdAt == request.time
         && request.resource.data.keys().hasOnly([
           'recipeId', 'recipeTitle', 'reporterId', 'reporterName', 'reason', 'status', 'createdAt'
         ]);
-      allow read, update, delete: if admin();
+      allow read, delete: if admin();
+      allow update: if admin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'resolvedAt'])
+        && request.resource.data.status == 'resolved'
+        && request.resource.data.resolvedAt == request.time;
     }
   }
 }

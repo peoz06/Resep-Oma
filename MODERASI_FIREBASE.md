@@ -1,9 +1,9 @@
 # Moderasi Firebase tanpa Cloud Functions
 
 Perubahan moderasi berlaku pada Flutter (`lib/`). Prototipe React (`src/`) tidak
-mengakses Firestore. Tidak menggunakan Cloud Functions. Pemilik project telah
-memublikasikan rules terbaru di Console; akses baca resep tanpa login dan
-penolakan baca profil tanpa login telah diuji. Agent tidak melakukan deploy.
+mengakses Firestore. Tidak menggunakan Cloud Functions. Pemilik project pernah
+menguji akses baca resep tanpa login dan penolakan baca profil tanpa login.
+Perubahan rules di repo ini tidak otomatis dipublikasikan.
 
 ## Koleksi, field, dan izin
 
@@ -12,7 +12,7 @@ penolakan baca profil tanpa login telah diuji. Agent tidak melakukan deploy.
 | `users/{uid}` | `name`, `email`, `role`, `status`, `avatar`, `provider`, `code`, `pending`, `createdAt`, `updatedAt` |
 | `recipes/{id}` | `code`, `title`, `description`, `category`, `filterKey`, `cookTime`, `servings`, `difficulty`, `image`, `images`, `authorId`, `authorName`, `authorAvatar`, `likesCount`, `recooksCount`, `reportedCount`, `verified`, `status`, `ingredients[{name,amount}]`, `steps[{title,description}]`, `createdAt`, `updatedAt` |
 | `favorites/{uid__recipeId}` | `uid`, `recipeId`, `createdAt` |
-| `reports/{id}` | `recipeId`, `recipeTitle`, `reporterId`, `reporterName`, `reason`, `status`, `createdAt`, `resolvedAt` |
+| `reports/{uid__recipeId}` | `recipeId`, `recipeTitle`, `reporterId`, `reporterName`, `reason`, `status`, `createdAt`, `resolvedAt` |
 | `likes/{uid__recipeId}` & `recooks/{uid__recipeId}` | `uid`, `recipeId`, `createdAt` (angka pada resep ditulis bersamaan dalam transaksi) |
 | `follows/{uid__followingId}` | `followerId`, `followingId`, `createdAt` |
 | `recipes/{id}/comments/{uid__recipeId}` | `authorId`, `authorName`, `text`, `rating`, `createdAt` |
@@ -33,7 +33,11 @@ penolakan baca profil tanpa login telah diuji. Agent tidak melakukan deploy.
 | lainnya/subkoleksi | ditolak | ditolak | ditolak |
 
 Resep baru wajib memakai `verified:false`, `likesCount:0`, dan `recooksCount:0`.
+`createdAt` berasal dari waktu server dan tidak boleh diubah oleh klien.
+Isi bahan/langkah yang ditulis diperiksa per elemen, maksimal 12 per daftar.
 Verifikasi berikutnya hanya melalui admin; suka/recook melalui transaksi terkait.
+Laporan baru dibatasi satu per akun dan resep selama dokumen laporan ada, dengan
+alasan maksimal 500 karakter. ID laporan lama tidak diubah.
 Notifikasi dibatasi 30 terbaru (penanda Beranda: satu yang belum dibaca), ulasan
 20 terbaru dengan rata-rata dari kumpulan tersebut. Jumlah pengikut memakai
 agregasi `count()` di server, bukan mengunduh seluruh dokumen hubungan.
@@ -77,7 +81,8 @@ harus menyasar dokumen dengan ID **UID Auth akun sebenarnya**, bukan ID pending.
 Resep sudah menyimpan `authorName` dan `authorAvatar`; layar resep tidak membaca
 `users` untuk nama/foto penulis. Payload resep tidak menyalin email atau profil
 privat. Perubahan nama/foto profil menyelaraskan resep lama milik pengguna.
-Rules membatasi field tingkat atas; `email`/`authorEmail` ditolak.
+Rules membatasi field tingkat atas; `email`/`authorEmail` ditolak. Katalog
+melewati dokumen yang tidak dapat dibaca tanpa menggagalkan halaman lain.
 
 **Sebelum membuka read publik, periksa data resep lama di cloud.** Rules tidak
 menyensor field yang sudah ada, teks bebas, isi nested, atau URL berisi data
@@ -88,20 +93,19 @@ Hapus resep hanya menghapus dokumen resep dan memperbarui daftar aplikasi.
 Laporan dipertahankan sebagai riwayat. Favorit yang menunjuk resep hilang tidak
 ditampilkan; client tidak menghapus favorit pengguna lain. File foto tidak dihapus.
 
-Supabase tetap memakai upload anon sesuai konfigurasi sebelumnya. Rules Firestore
-tidak mengamankan API upload Supabase: akun banned masih dapat memanggil upload
-langsung jika policy Supabase mengizinkannya, tetapi tidak dapat menyimpan resep.
+Upload Supabase memakai token Firebase dan policy milik bucket. Rules Firestore
+tidak menentukan izin upload Supabase; lihat [panduan Storage](SUPABASE_STORAGE.md).
 
 ## Deploy rules terbaru dan pemeriksaan admin/data
 
-Pemilik telah memublikasikan rules terbaru. Periksa data/role dan aturan
-produksi lainnya sebelum mencoba fitur baru.
+Periksa data/role dan aturan produksi sebelum merilis build Android baru.
 
 1. Tinjau semua role admin lama. Rules live sebelumnya memungkinkan pengguna
    menulis role sendiri; role yang tersimpan belum tentu tepercaya.
 2. Siapkan admin awal melalui Console tepercaya: `users/<UID Auth>` dengan
    `role:admin,status:active`. Client tidak dapat menaikkan role sendiri.
-3. Periksa privasi dan field dokumen resep lama.
+3. Periksa privasi dan field dokumen resep lama. Isi `createdAt` yang tidak ada
+   dengan timestamp yang benar agar resep muncul di katalog berpaginasi.
 4. Jalankan tes emulator dan uji aplikasi dua sesi di bawah.
 5. Untuk perubahan rules berikutnya, ganti **seluruh** rules live melalui Console
    setelah pengujian. Jangan sisakan match permisif lama. Agent tidak melakukan deploy.
@@ -140,7 +144,7 @@ Tes tambahan mencakup banned, status legacy/null/tidak dikenal, anonymous, kepem
 laporan, pemalsuan authorId, field email, admin nonaktif, larangan delete profil,
 default-deny, dan penerimaan perubahan status melalui listener SDK Firestore.
 
-**Hasil terverifikasi:** 32 tes rules lulus pada emulator lokal. Tes emulator registrasi
+**Hasil terverifikasi:** 38 tes rules lulus pada emulator lokal. Tes emulator registrasi
 hanya membuktikan create profil Firestore, bukan Firebase Authentication
 end-to-end. Tes listener Node membuktikan penerimaan status, bukan logout UI Flutter.
 
@@ -149,7 +153,7 @@ flutter analyze --no-pub
 flutter test --no-pub
 ```
 
-Hasil lokal: `flutter analyze --no-pub` tanpa temuan; 31 tes Flutter lulus.
+Hasil lokal: `flutter analyze --no-pub` tanpa temuan; 36 tes Flutter lulus.
 `git diff --check` bersih. Pemeriksaan layout dilakukan lewat widget test, bukan
 inspeksi visual perangkat nyata.
 
@@ -162,7 +166,7 @@ mengubah akun nyata untuk menyiapkan fixture. Emulator lebih aman.
    `users/suspended` (user/suspended).
 2. Siapkan `recipes/recipe1` dengan `authorId:owner`, `authorName` sesuai nama profil,
    `title:Sup`, `image:https://example.com/sup.jpg`, `ingredients:[]`, `steps:[]`,
-   `verified:false`, `likesCount:0`, `recooksCount:0`.
+   `verified:false`, `likesCount:0`, `recooksCount:0`, dan timestamp server untuk `createdAt`.
 3. DELETE `/recipes/recipe1`: UID admin allow, UID user lain deny.
 4. UPDATE `/users/owner`: UID owner mengubah role menjadi admin deny.
 5. CREATE resep memakai payload langkah 2 dengan authorId sesuai UID:
@@ -186,6 +190,5 @@ Playground tidak menguji login, navigasi, atau listener Flutter.
    error permission-denied mentah atau lookup profil penulis.
 7. Cabut role admin kedua lewat Console; panel adminnya harus tertutup.
 
-Belum diverifikasi langsung oleh agent: login email/Google nyata, logout otomatis
-Flutter dua sesi, data cloud lama, dan seluruh isi rules produksi. Rules terbaru
-telah dipublikasikan menurut pemilik project.
+Belum diverifikasi langsung: login email/Google nyata, logout otomatis Flutter
+dua sesi, data cloud lama, dan aturan yang aktif di produksi.

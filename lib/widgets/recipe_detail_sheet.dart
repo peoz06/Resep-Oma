@@ -195,6 +195,7 @@ class _RecipeDetailSheetState extends State<RecipeDetailSheet> {
             TextField(
               controller: reasonCtrl,
               maxLines: 3,
+              maxLength: RecipeService.maxReportReason,
               decoration: const InputDecoration(
                 hintText: 'Tuliskan alasan laporan Anda...',
               ),
@@ -235,7 +236,6 @@ class _RecipeDetailSheetState extends State<RecipeDetailSheet> {
                     final res = await RecipeService.submitReport(
                       reporterId: widget.currentUserId!,
                       recipeId: widget.recipe.id,
-                      recipeTitle: widget.recipe.title,
                       reason: reason,
                     );
 

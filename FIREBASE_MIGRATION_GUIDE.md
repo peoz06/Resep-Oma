@@ -174,10 +174,9 @@ Dan untuk Google Sign-In iOS, tambahkan URL scheme dengan `REVERSED_CLIENT_ID` d
 
 ## 4. Security Rules (Firestore & Storage)
 
-Rules Firestore berada di **`firestore.rules`**. Pemilik menyatakan rules terbaru
-sudah dipublikasikan di Console. Agent tidak melakukan deploy; baca resep tanpa
-login sudah diuji, tetapi seluruh aturan produksi belum diverifikasi. Jangan
-gabungkan dengan rules permisif lama.
+Rules Firestore berada di **`firestore.rules`**. Pemilik pernah menguji baca resep
+tanpa login, tetapi perubahan rules di repo ini perlu dipublikasikan secara
+terpisah. Jangan gabungkan dengan rules permisif lama.
 Ikuti pemeriksaan data dan pengujian dalam **`MODERASI_FIREBASE.md`** untuk
 perubahan berikutnya. Admin pertama diatur manual pada `users/<UID Auth>` dengan
 `role:admin,status:active` melalui Firestore Console.
