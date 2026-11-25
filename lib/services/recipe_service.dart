@@ -21,6 +21,11 @@ typedef RecipePage = ({
   DocumentSnapshot<Map<String, dynamic>>? next,
 });
 
+typedef AdminPage<T> = ({
+  List<T> items,
+  DocumentSnapshot<Map<String, dynamic>>? next,
+});
+
 /// Lapisan data aplikasi berbasis Cloud Firestore.
 ///
 /// Koleksi yang dipakai:
@@ -60,7 +65,7 @@ class RecipeService {
       _db.collection('users');
 
   static const Duration _readTimeout = Duration(seconds: 10);
-  static const int _recipePageSize = 25;
+  static const int _pageSize = 25;
   static const int maxRecipeRows = 12;
   static const int maxReportReason = 500;
 
@@ -104,6 +109,33 @@ class RecipeService {
     }
   }
 
+  static Future<AdminPage<T>> _fetchAdminPage<T>(
+    Query<Map<String, dynamic>> collection,
+    T Function(DocumentSnapshot<Map<String, dynamic>>) decode,
+    DocumentSnapshot<Map<String, dynamic>>? after,
+  ) async {
+    // Urutkan menurut ID agar dokumen lama tanpa createdAt tetap terbaca.
+    var query = collection.orderBy(FieldPath.documentId).limit(_pageSize);
+    if (after != null) query = query.startAfterDocument(after);
+    final snapshot = await query
+        .get(const GetOptions(source: Source.server)).timeout(_readTimeout);
+    final docs = snapshot.docs;
+    return (
+      items: docs.map(decode).toList(),
+      next: docs.length == _pageSize ? docs.last : null,
+    );
+  }
+
+  static Future<int?> _countAdminDocuments(Query<Map<String, dynamic>> query) async {
+    try {
+      return (await query.count().get().timeout(_readTimeout)).count;
+    } on FirebaseException {
+      return null;
+    } on TimeoutException {
+      return null;
+    }
+  }
+
   static String errorMessage(Object e) {
     if (e is TimeoutException) {
       return 'Koneksi ke Firestore terlalu lama. Coba muat resep lagi.';
@@ -130,7 +162,7 @@ class RecipeService {
     DocumentSnapshot<Map<String, dynamic>>? after,
   }) async {
     if (!isReady) return (recipes: const <Recipe>[], next: null);
-    var query = _recipes.orderBy('createdAt', descending: true).limit(_recipePageSize);
+    var query = _recipes.orderBy('createdAt', descending: true).limit(_pageSize);
     if (after != null) query = query.startAfterDocument(after);
 
     // Cache kosong saat koneksi lambat bukan bukti katalog di server kosong.
@@ -150,7 +182,7 @@ class RecipeService {
     return (
       recipes: docs.map(_decodeRecipe).whereType<Recipe>().toList(),
       // Pakai dokumen mentah terakhir agar dokumen rusak tidak memutus kursor.
-      next: docs.isNotEmpty && (docs.length == _recipePageSize || snap.metadata.isFromCache)
+      next: docs.isNotEmpty && (docs.length == _pageSize || snap.metadata.isFromCache)
           ? docs.last
           : null,
     );
@@ -312,31 +344,58 @@ class RecipeService {
     return (await _readDoc(_drafts.doc(uid))).data();
   }
 
-  static Future<ServiceResult> saveDraft(String uid, Map<String, dynamic> data) async {
+  static Object? draftVersion(Map<String, dynamic> data) =>
+      data['revision'] ?? data['updatedAt'];
+
+  static Future<({ServiceResult result, String? revision})> saveDraft(
+    String uid, Map<String, dynamic> data,
+  ) async {
     // shortcut: satu draf teks per akun; buat daftar draf jika pengguna perlu beberapa.
-    if (!isReady) return _notConfigured;
+    if (!isReady) return (result: _notConfigured, revision: null);
+    final title = data['title'];
     if (uid != AuthService.firebaseUser?.uid || !AuthService.hasRealSession ||
-        (data['title'] as String).trim().isEmpty ||
-        (data['title'] as String).trim().length > 60) {
-      return const ServiceResult(ok: false, message: 'Masukkan judul draf (maksimal 60 karakter).');
+        title is! String || title.trim().isEmpty || title.trim().length > 60) {
+      return (
+        result: const ServiceResult(ok: false, message: 'Masukkan judul draf (maksimal 60 karakter).'),
+        revision: null,
+      );
     }
     try {
+      // Membaca ulang setelah simpan bisa mengambil versi dari perangkat lain.
+      final revision = _drafts.doc().id;
       await _drafts.doc(uid).set({
-        ...data, 'uid': uid, 'updatedAt': FieldValue.serverTimestamp(),
+        ...data, 'uid': uid, 'revision': revision, 'updatedAt': FieldValue.serverTimestamp(),
       });
-      return const ServiceResult(ok: true, message: 'Draf tersimpan. Foto lokal tidak ikut tersimpan.');
+      return (
+        result: const ServiceResult(ok: true, message: 'Draf tersimpan. Foto lokal tidak ikut tersimpan.'),
+        revision: revision,
+      );
     } catch (e) {
-      return ServiceResult(ok: false, message: errorMessage(e));
+      return (result: ServiceResult(ok: false, message: errorMessage(e)), revision: null);
     }
   }
 
-  static Future<ServiceResult> deleteDraft(String uid) async {
+  static Future<ServiceResult> deleteDraft(String uid, {Object? expectedVersion}) async {
     if (!isReady) return _notConfigured;
     if (uid != AuthService.firebaseUser?.uid) {
       return const ServiceResult(ok: false, message: 'Masuk dengan akun pemilik draf.');
     }
     try {
-      await _drafts.doc(uid).delete();
+      final ref = _drafts.doc(uid);
+      if (expectedVersion == null) {
+        await ref.delete();
+      } else {
+        final removed = await _db.runTransaction((tx) async {
+          final current = (await tx.get(ref)).data();
+          if (current == null) return true;
+          if (draftVersion(current) != expectedVersion) return false;
+          tx.delete(ref);
+          return true;
+        });
+        if (!removed) {
+          return const ServiceResult(ok: false, message: 'Versi draf yang lebih baru dipertahankan.');
+        }
+      }
       return const ServiceResult(ok: true, message: 'Draf dihapus.');
     } catch (e) {
       return ServiceResult(ok: false, message: errorMessage(e));
@@ -598,12 +657,16 @@ class RecipeService {
     };
   }
 
-  static Future<List<Map<String, dynamic>>> fetchReports({bool openOnly = false}) async {
-    if (!isReady) return const [];
-    final snap = await _read(openOnly ? _reports.where('status', isEqualTo: 'open') : _reports);
-    final docs = snap.docs.toList()..sort(_newestFirst);
-    return docs.map(_reportToMap).toList();
+  static Future<AdminPage<Map<String, dynamic>>> fetchReports({
+    DocumentSnapshot<Map<String, dynamic>>? after,
+  }) async {
+    if (!isReady) return (items: const <Map<String, dynamic>>[], next: null);
+    return _fetchAdminPage(_reports, _reportToMap, after);
   }
+
+  static Future<int?> countOpenReports() async => isReady
+      ? _countAdminDocuments(_reports.where('status', isEqualTo: 'open'))
+      : null;
 
   static Future<ServiceResult> submitReport({
     required String reporterId,
@@ -664,24 +727,17 @@ class RecipeService {
     }
   }
 
-  static Future<ServiceResult> deleteReport(String id) async {
-    if (!isReady) return _notConfigured;
-    try {
-      await _reports.doc(id).delete();
-      return const ServiceResult(ok: true, message: 'Laporan dihapus.');
-    } catch (e) {
-      return ServiceResult(ok: false, message: errorMessage(e));
-    }
-  }
-
   // ───────────────────────── PENGGUNA ─────────────────────────
 
-  static Future<List<AppUser>> fetchUsers() async {
-    if (!isReady) return const [];
-    final snap = await _read(_users);
-    final docs = snap.docs.toList()..sort(_newestFirst);
-    return docs.map((d) => AppUser.fromFirestore(d.id, d.data())).toList();
+  static Future<AdminPage<AppUser>> fetchUsers({
+    DocumentSnapshot<Map<String, dynamic>>? after,
+  }) async {
+    if (!isReady) return (items: const <AppUser>[], next: null);
+    return _fetchAdminPage(_users, (doc) => AppUser.fromFirestore(doc.id, doc.data()!), after);
   }
+
+  static Future<int?> countUsers() async =>
+      isReady ? _countAdminDocuments(_users) : null;
 
   /// Admin membuat "undangan" profil. Akun login-nya baru terbentuk saat
   /// pemilik email tersebut mendaftar lewat aplikasi. Profil pending hanya

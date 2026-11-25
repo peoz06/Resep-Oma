@@ -67,7 +67,9 @@ Panduan lanjutan:
   ulasan. Notifikasi menampilkan maksimal 30 aktivitas terbaru; penanda di Beranda
   hanya membaca satu aktivitas yang belum dibaca.
 - Admin: laporan, status dan role pengguna, serta verifikasi resep. Admin
-  pertama tetap dibuat lewat Firebase Console.
+  pertama tetap dibuat lewat Firebase Console. Pengguna dan laporan dimuat
+  per 25 dokumen; pencarian pengguna dan filter Dilaporkan memakai data yang
+  sudah dimuat. Total akun dan laporan terbuka dihitung oleh Firestore.
 - Daftar/login, pemulihan sandi, email verifikasi, profil, tema gelap, mode tamu.
 
 Pemilik project pernah menguji baca resep tanpa login pada project nyata.
@@ -89,6 +91,8 @@ dan publikasikan `firestore.rules` serta `firestore.indexes.json` dengan
 atau buat indeks `notifications` (`recipientId` ascending, `createdAt` descending)
 di Console setelah memublikasikan rules. Tunggu indeks siap, lalu uji dengan
 build Android baru. Laporan dari build lama memakai ID yang tidak lagi diterima.
+Publikasikan rules terbaru sebelum menguji simpan draf di build baru. Rules ini
+menerima draf lama dan field `revision` yang dipakai build baru.
 
 Untuk upload foto, aktifkan integrasi Firebase di Supabase dan terapkan migrasi
 Storage sesuai [panduan bucket](SUPABASE_STORAGE.md). Build lama yang memakai

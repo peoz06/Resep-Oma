@@ -10,7 +10,7 @@ import '../theme/app_theme.dart';
 /// - URL http/https (Firebase Storage, gambar contoh, dsb.)
 /// - path file lokal (hasil `image_picker`, belum diunggah)
 /// - string kosong → placeholder
-class AppCachedImage extends StatelessWidget {
+class AppCachedImage extends StatefulWidget {
   final String imageUrl;
   final double? width;
   final double? height;
@@ -33,10 +33,34 @@ class AppCachedImage extends StatelessWidget {
   static bool isNetworkSource(String url) =>
       url.startsWith('http://') || url.startsWith('https://');
 
+  @override
+  State<AppCachedImage> createState() => _AppCachedImageState();
+}
+
+class _AppCachedImageState extends State<AppCachedImage> {
+  late Future<Uint8List>? _localBytes = _readLocal();
+
+  Future<Uint8List>? _readLocal() {
+    final url = widget.imageUrl;
+    if (!widget.allowLocal || url.isEmpty || AppCachedImage.isNetworkSource(url)) {
+      return null;
+    }
+    final path = url.startsWith('file://') ? Uri.parse(url).toFilePath() : url;
+    return XFile(path).readAsBytes();
+  }
+
+  @override
+  void didUpdateWidget(covariant AppCachedImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.imageUrl != oldWidget.imageUrl || widget.allowLocal != oldWidget.allowLocal) {
+      _localBytes = _readLocal();
+    }
+  }
+
   Widget _placeholder() {
     return Container(
-      width: width,
-      height: height,
+      width: widget.width,
+      height: widget.height,
       color: AppColors.surfaceContainerHigh,
       alignment: Alignment.center,
       child: const Icon(
@@ -49,8 +73,8 @@ class AppCachedImage extends StatelessWidget {
 
   Widget _loadingPlaceholder() {
     return Container(
-      width: width,
-      height: height,
+      width: widget.width,
+      height: widget.height,
       color: AppColors.surfaceContainerHigh.withValues(alpha: 0.5),
       alignment: Alignment.center,
       child: const SizedBox(
@@ -66,11 +90,12 @@ class AppCachedImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final AppCachedImage(:imageUrl, :width, :height, :fit, :isCircle, :borderRadius) = widget;
     final Widget imageWidget;
 
     if (imageUrl.isEmpty) {
       imageWidget = _placeholder();
-    } else if (isNetworkSource(imageUrl)) {
+    } else if (AppCachedImage.isNetworkSource(imageUrl)) {
       imageWidget = Image.network(
         imageUrl,
         width: width,
@@ -82,12 +107,10 @@ class AppCachedImage extends StatelessWidget {
           return _loadingPlaceholder();
         },
       );
-    } else if (allowLocal) {
-      final path = imageUrl.startsWith('file://')
-          ? Uri.parse(imageUrl).toFilePath()
-          : imageUrl;
+    } else if (_localBytes case final future?) {
       imageWidget = FutureBuilder<Uint8List>(
-        future: XFile(path).readAsBytes(),
+        key: ValueKey(imageUrl),
+        future: future,
         builder: (context, snapshot) {
           if (snapshot.hasError) return _placeholder();
           final bytes = snapshot.data;
@@ -111,7 +134,7 @@ class AppCachedImage extends StatelessWidget {
 
     if (borderRadius != null) {
       return ClipRRect(
-        borderRadius: borderRadius!,
+        borderRadius: borderRadius,
         child: imageWidget,
       );
     }

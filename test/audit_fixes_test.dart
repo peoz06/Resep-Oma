@@ -5,6 +5,9 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_firestore_platform_interface/src/pigeon/messages.pigeon.dart' as fs;
+import 'package:dapurkita/models/recipe_model.dart';
+import 'package:dapurkita/screens/admin_screens.dart';
+import 'package:dapurkita/screens/auth_screens.dart';
 import 'package:dapurkita/screens/beranda_screen.dart';
 import 'package:dapurkita/screens/eksplor_screen.dart';
 import 'package:dapurkita/screens/main_navigation_screen.dart';
@@ -76,6 +79,63 @@ fs.InternalDocumentSnapshot _doc(String path, Map<String, dynamic>? data) =>
 fs.InternalQuerySnapshot _query([List<fs.InternalDocumentSnapshot> docs = const []]) =>
     fs.InternalQuerySnapshot(documents: docs, documentChanges: [], metadata: _metadata);
 
+void _draftTransaction(
+  fs.InternalDocumentSnapshot Function() read,
+  FutureOr<void> Function(List<fs.InternalTransactionCommand>) commit,
+) {
+  const id = 'audit-draft';
+  const channel = MethodChannel(
+    'plugins.flutter.io/firebase_firestore/transaction/$id',
+    StandardMethodCodec(fs.PigeonCodec()),
+  );
+  final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+  void emit(Map<String, Object?> event) {
+    unawaited(messenger.handlePlatformMessage(
+      channel.name, channel.codec.encodeSuccessEnvelope(event), (_) {},
+    ));
+  }
+
+  messenger.setMockMessageHandler(channel.name, (message) async {
+    final method = const StandardMessageCodec().readValue(ReadBuffer(message!));
+    if (method == 'listen') {
+      emit({'appName': '[DEFAULT]'});
+    }
+    return channel.codec.encodeSuccessEnvelope(null);
+  });
+  _host('transactionCreate', (_) => id);
+  _host('transactionGet', (args) {
+    expect(args[2], 'drafts/owner');
+    return read();
+  });
+  _host('transactionStoreResult', (args) async {
+    await commit((args[2]! as List).cast<fs.InternalTransactionCommand>());
+    emit({'complete': true});
+    return null;
+  });
+}
+
+Future<void> _openDraftForPublish(WidgetTester tester, VoidCallback onPublish) async {
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockMethodCallHandler(const MethodChannel('plugins.flutter.io/image_picker'),
+          (_) async => 'https://example.com/photo.jpg');
+  await tester.pumpWidget(MaterialApp(home: Scaffold(body: UnggahResepScreen(
+    userId: 'owner', onPublishRecipe: onPublish,
+  ))));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byType(AppCachedImage).first);
+  Navigator.of(tester.element(find.byType(UnggahResepScreen))).pop(ImageSource.gallery);
+  await tester.pumpAndSettle();
+  await tester.scrollUntilVisible(find.text('Terbitkan Resep Sekarang'), 300,
+      scrollable: find.byType(Scrollable).first);
+}
+
+auth.InternalUserDetails _firebaseUser([String name = 'Oma']) =>
+    auth.InternalUserDetails(
+      userInfo: auth.InternalUserInfo(uid: 'owner', email: 'oma@example.com',
+          displayName: name, isAnonymous: false, isEmailVerified: true),
+      providerData: [],
+    );
+
 final _profile = <String, dynamic>{
   'name': 'Oma', 'email': 'oma@example.com', 'role': 'user', 'status': 'active',
 };
@@ -100,11 +160,7 @@ void main() {
   tearDownAll(() => debugDefaultTargetPlatformOverride = null);
 
   setUp(() async {
-    final user = auth.InternalUserDetails(
-      userInfo: auth.InternalUserInfo(uid: 'owner', email: 'oma@example.com',
-          displayName: 'Oma', isAnonymous: false, isEmailVerified: true),
-      providerData: [],
-    );
+    final user = _firebaseUser();
     for (final method in ['createUserWithEmailAndPassword', 'signInWithEmailAndPassword']) {
       _authHost(method, (_) => auth.InternalUserCredential(user: user));
     }
@@ -160,6 +216,76 @@ void main() {
     expect(deletes, 1);
   });
 
+  testWidgets('Login tertunda tidak dapat ditinggalkan ke layar tamu atau daftar', (tester) async {
+    final response = Completer<auth.InternalUserCredential>();
+    _authHost('signInWithEmailAndPassword', (_) => response.future);
+    var leftScreen = false;
+    var loggedIn = false;
+    await tester.pumpWidget(MaterialApp(home: Scaffold(
+      body: StatefulBuilder(builder: (context, update) => leftScreen
+          ? const Text('Layar lain')
+          : LoginScreen(
+              onLoginSuccess: (_) => loggedIn = true,
+              onBackToGuest: () => update(() => leftScreen = true),
+              onNavigateToRegister: () => update(() => leftScreen = true),
+            )),
+    )));
+    await tester.enterText(find.byType(TextField).first, 'oma@example.com');
+    await tester.enterText(find.byType(TextField).last, 'secret123');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.ensureVisible(find.text('Masuk Sekarang'));
+    await tester.tap(find.text('Masuk Sekarang'));
+    await tester.pump();
+    final register = find.widgetWithText(TextButton, 'Daftar Sekarang');
+    final canRegister = tester.widget<TextButton>(register).onPressed != null;
+    await tester.ensureVisible(find.text('Lanjut sebagai Tamu'));
+    await tester.tap(find.text('Lanjut sebagai Tamu'));
+    await tester.pump();
+    response.complete(auth.InternalUserCredential(user: _firebaseUser()));
+    await tester.pumpAndSettle();
+    expect(canRegister, isFalse);
+    expect(leftScreen, isFalse);
+    expect(loggedIn, isTrue);
+  });
+
+  test('Simpan ulang nama yang sama memperbaiki profil dan resep lama', () async {
+    await FirebaseAuth.instance.signInWithEmailAndPassword(
+      email: 'oma@example.com', password: 'secret123',
+    );
+    _authHost('updateProfile', (_) => _firebaseUser('Oma Baru'), user: true);
+    final profile = {..._profile};
+    var authorName = 'Oma';
+    var profileAttempts = 0;
+    var batchAttempts = 0;
+    _host('documentReferenceGet', (_) => _doc('users/owner', profile));
+    _host('documentReferenceSet', (args) {
+      if (++profileAttempts == 1) throw PlatformException(code: 'unavailable');
+      final request = args[1]! as fs.DocumentReferenceRequest;
+      profile['name'] = request.data!['name'];
+      return null;
+    });
+    _host('queryGet', (_) => _query([
+      _doc('recipes/r1', {..._recipe, 'authorName': authorName}),
+    ]));
+    _host('writeBatchCommit', (args) {
+      if (++batchAttempts == 1) throw PlatformException(code: 'unavailable');
+      final command = (args[1]! as List).single as fs.InternalTransactionCommand;
+      authorName = command.data!['authorName'] as String;
+      return null;
+    });
+
+    expect((await AuthService.updateProfile(name: 'Oma Baru')).ok, isFalse);
+    expect(FirebaseAuth.instance.currentUser?.displayName, 'Oma Baru');
+    final partial = await AuthService.updateProfile(name: 'Oma Baru');
+    expect(partial.user?.name, 'Oma Baru');
+    expect(partial.message, contains('resep lama'));
+    expect(authorName, 'Oma');
+
+    expect((await AuthService.updateProfile(name: 'Oma Baru')).ok, isTrue);
+    expect(authorName, 'Oma Baru');
+    expect(batchAttempts, 2);
+  });
+
   testWidgets('Draf terlambat tidak menimpa deskripsi baru meski judul kosong', (tester) async {
     final draft = Completer<fs.InternalDocumentSnapshot>();
     _host('documentReferenceGet', (_) => draft.future);
@@ -178,24 +304,17 @@ void main() {
     final deletion = Completer<void>();
     var writes = 0;
     var published = 0;
+    final draft = _doc('drafts/owner', {..._recipe, 'updatedAt': Timestamp(1, 0)});
     _host('documentReferenceGet', (args) {
       final path = (args[1]! as fs.DocumentReferenceRequest).path;
-      return _doc(path, path.startsWith('users/') ? _profile : _recipe);
+      return path == 'drafts/owner' ? draft : _doc(path, _profile);
     });
     _host('documentReferenceSet', (_) { writes++; return null; });
-    _host('documentReferenceDelete', (_) => deletion.future);
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(const MethodChannel('plugins.flutter.io/image_picker'),
-            (_) async => 'https://example.com/photo.jpg');
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: UnggahResepScreen(
-      userId: 'owner', onPublishRecipe: () => published++,
-    ))));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byType(AppCachedImage).first);
-    Navigator.of(tester.element(find.byType(UnggahResepScreen))).pop(ImageSource.gallery);
-    await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('Terbitkan Resep Sekarang'), 300,
-        scrollable: find.byType(Scrollable).first);
+    _draftTransaction(() => draft, (commands) {
+      expect(commands.single.path, 'drafts/owner');
+      return deletion.future;
+    });
+    await _openDraftForPublish(tester, () => published++);
     await tester.tap(find.text('Terbitkan Resep Sekarang'));
     await tester.pump();
     final publishButton = find.byType(ElevatedButton).last;
@@ -208,6 +327,52 @@ void main() {
     deletion.complete();
     await tester.pumpAndSettle();
     expect(published, 1);
+  });
+
+  testWidgets('Terbit tidak menghapus versi draf yang baru disimpan perangkat lain', (tester) async {
+    await FirebaseAuth.instance.signInWithEmailAndPassword(
+      email: 'oma@example.com', password: 'secret123',
+    );
+    Map<String, dynamic>? draft = {
+      ..._recipe, 'updatedAt': Timestamp(1, 0), 'revision': 'versi-asli',
+    };
+    _host('documentReferenceGet', (args) {
+      final path = (args[1]! as fs.DocumentReferenceRequest).path;
+      return _doc(path, path == 'drafts/owner' ? draft : _profile);
+    });
+    _host('documentReferenceDelete', (_) { draft = null; return null; });
+    _draftTransaction(() => _doc('drafts/owner', draft), (commands) {
+      if (commands.isNotEmpty) draft = null;
+    });
+
+    var published = 0;
+    await _openDraftForPublish(tester, () => published++);
+    draft = {...draft!, 'title': 'Draf baru', 'updatedAt': Timestamp(2, 0),
+      'revision': 'versi-baru'};
+    await tester.tap(find.text('Terbitkan Resep Sekarang'));
+    await tester.pumpAndSettle();
+    expect(published, 1);
+    expect(draft?['title'], 'Draf baru');
+  });
+
+  test('Setiap simpan draf mengembalikan revisi yang ditulisnya', () async {
+    await FirebaseAuth.instance.signInWithEmailAndPassword(
+      email: 'oma@example.com', password: 'secret123',
+    );
+    final revisions = <Object?>[];
+    _host('documentReferenceSet', (args) {
+      final request = args[1]! as fs.DocumentReferenceRequest;
+      expect(request.path, 'drafts/owner');
+      revisions.add(request.data!['revision']);
+      return null;
+    });
+    for (var i = 0; i < 2; i++) {
+      final saved = await RecipeService.saveDraft('owner', {'title': 'Judul sama'});
+      expect(saved.result.ok, isTrue);
+      expect(saved.revision, isNotEmpty);
+      expect(saved.revision, revisions.last);
+    }
+    expect(revisions.toSet(), hasLength(2));
   });
 
   testWidgets('Pembaruan sosial membaca satu resep tanpa mereset pencarian dan scroll', (tester) async {
@@ -327,8 +492,105 @@ void main() {
       _doc('reports/valid', {'recipeId': 'r1', 'recipeTitle': 'Sup Ayam'}),
     ]));
     final reports = await RecipeService.fetchReports();
-    expect(reports.map((report) => report['recipeTitle']),
+    expect(reports.items.map((report) => report['recipeTitle']),
         containsAll(['Judul tidak tersedia', 'Sup Ayam']));
+  });
+
+  testWidgets('Admin memuat halaman pengguna berikutnya tanpa mengulang total', (tester) async {
+    tester.view.physicalSize = const Size(375, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    var reads = 0;
+    var counts = 0;
+    _host('queryGet', (args) {
+      expect(args[1], 'users');
+      final params = args[3]! as fs.InternalQueryParameters;
+      expect(params.limit, 25);
+      expect(params.orderBy, [[FieldPath.documentId, false]]);
+      if (++reads == 1) {
+        expect(params.startAfter, isNull);
+        return _query([
+          for (var i = 0; i < 25; i++)
+            _doc('users/u${i.toString().padLeft(2, '0')}', _profile),
+        ]);
+      }
+      expect(params.startAfter, ['u24']);
+      return _query([_doc('users/u25', {..._profile, 'name': 'Pengguna berikut'})]);
+    });
+    _host('aggregateQuery', (args) {
+      expect(args[1], 'users');
+      counts++;
+      return [fs.AggregateQueryResponse(type: fs.AggregateType.count, value: 500)];
+    });
+    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: AdminUsersScreen())));
+    await tester.pumpAndSettle();
+    expect(find.text('500'), findsOneWidget);
+    expect(find.text('Pencarian hanya pada pengguna yang sudah dimuat.'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'pengguna berikut');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    expect(find.text('Pengguna berikut'), findsNothing);
+    await tester.tap(find.text('Muat lebih banyak pengguna'));
+    await tester.pumpAndSettle();
+    expect(find.text('Pengguna berikut'), findsOneWidget);
+    expect(find.text('Muat lebih banyak pengguna'), findsNothing);
+    expect((reads, counts), (2, 1));
+  });
+
+  testWidgets('Dialog laporan menambah satu halaman dan memperbarui filter resep', (tester) async {
+    tester.view.physicalSize = const Size(375, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    var reads = 0;
+    var counts = 0;
+    _host('queryGet', (args) {
+      expect(args[1], 'reports');
+      final params = args[3]! as fs.InternalQueryParameters;
+      expect(params.limit, 25);
+      expect(params.orderBy, [[FieldPath.documentId, false]]);
+      if (++reads == 1) {
+        expect(params.startAfter, isNull);
+        return _query([
+          for (var i = 0; i < 25; i++)
+            _doc('reports/r${i.toString().padLeft(2, '0')}', {'status': 'resolved'}),
+        ]);
+      }
+      expect(params.startAfter, ['r24']);
+      return _query([_doc('reports/r25', {'recipeId': 'r1', 'status': 'open'})]);
+    });
+    _host('aggregateQuery', (args) {
+      expect(args[1], 'reports');
+      final params = args[2]! as fs.InternalQueryParameters;
+      expect(params.where, contains(equals(['status', '==', 'open'])));
+      counts++;
+      return [fs.AggregateQueryResponse(type: fs.AggregateType.count, value: 3)];
+    });
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: AdminRecipesScreen(
+      recipes: [Recipe.fromFirestore('r1', _recipe)],
+      onSelectRecipe: (_) {},
+      onNavigateToUpload: () {},
+      onDeleteRecipe: (_) async {},
+    ))));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Dilaporkan'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Dilaporkan'));
+    await tester.pumpAndSettle();
+    expect(find.text('Sup Ayam'), findsNothing);
+    await tester.tap(find.text('Laporan (3)'));
+    await tester.pumpAndSettle();
+    expect(reads, 1);
+    await tester.tap(find.text('Muat lebih banyak laporan'));
+    await tester.pumpAndSettle();
+    expect(find.text('Muat lebih banyak laporan'), findsNothing);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('Sup Ayam'), findsOneWidget);
+    expect((reads, counts), (2, 1));
   });
 
   testWidgets('Query notifikasi dibatasi; penanda hanya mencari satu yang belum dibaca', (tester) async {

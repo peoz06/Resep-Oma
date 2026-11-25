@@ -49,6 +49,7 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
   final List<CookingStep> _steps = [];
 
   bool _isPublishing = false;
+  Object? _draftVersion;
 
   @override
   void initState() {
@@ -117,6 +118,7 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
           _steps.add(CookingStep.fromFirestore(
               Map<String, dynamic>.from(steps[i] as Map), fallbackId: 'step-$i'));
         }
+        _draftVersion = RecipeService.draftVersion(draft);
       });
     } catch (_) {
       if (mounted) widget.onShowToast?.call('Draf belum dapat dimuat.');
@@ -127,7 +129,7 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
     final uid = widget.userId;
     if (uid == null || _isPublishing) return;
     setState(() => _isPublishing = true);
-    final result = await RecipeService.saveDraft(uid, {
+    final (:result, :revision) = await RecipeService.saveDraft(uid, {
       'title': _titleController.text.trim(),
       'description': _descController.text.trim(),
       'category': _selectedCategory,
@@ -140,6 +142,7 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
           {'title': item.title, 'description': item.description}).toList(),
     });
     if (!mounted) return;
+    if (result.ok) _draftVersion = revision;
     setState(() => _isPublishing = false);
     widget.onShowToast?.call(result.message);
   }
@@ -396,6 +399,7 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
     }
     if (_isPublishing) return;
 
+    final draftVersion = _draftVersion;
     setState(() => _isPublishing = true);
 
     // 1) Unggah foto lokal ke Supabase Storage; URL lama tetap dipakai.
@@ -444,8 +448,8 @@ class _UnggahResepScreenState extends State<UnggahResepScreen> {
     if (!mounted) return;
 
     if (res.ok) {
-      final draftResult = widget.recipe == null
-          ? await RecipeService.deleteDraft(widget.userId!)
+      final draftResult = widget.recipe == null && draftVersion != null
+          ? await RecipeService.deleteDraft(widget.userId!, expectedVersion: draftVersion)
           : const ServiceResult(ok: true);
       if (!mounted) return;
       setState(() => _isPublishing = false);

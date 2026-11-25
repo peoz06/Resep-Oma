@@ -315,15 +315,15 @@ class AuthService {
     try {
       final updates = <String, dynamic>{};
 
-      if (name != null &&
-          name.trim().isNotEmpty &&
-          name.trim() != user.displayName) {
-        final trimmed = name.trim();
-        updates['name'] = trimmed;
-        try {
-          await user.updateDisplayName(trimmed);
-        } catch (_) {
-          // nama tampilan gagal diperbarui — profil Firestore tetap disimpan
+      final newName = name?.trim();
+      if (newName != null && newName.isNotEmpty) {
+        updates['name'] = newName;
+        if (newName != user.displayName) {
+          try {
+            await user.updateDisplayName(newName);
+          } catch (_) {
+            // nama tampilan gagal diperbarui — profil Firestore tetap disimpan
+          }
         }
       }
 

@@ -112,11 +112,12 @@ class _LoginScreenState extends State<LoginScreen> {
               Align(
                 alignment: Alignment.centerLeft,
                 child: TextButton.icon(
-                  onPressed: widget.onBackToGuest,
-                  icon: const Icon(Icons.arrow_back, size: 16, color: AppColors.secondary),
+                  onPressed: _loading ? null : widget.onBackToGuest,
+                  style: TextButton.styleFrom(foregroundColor: AppColors.secondary),
+                  icon: const Icon(Icons.arrow_back, size: 16),
                   label: const Text(
                     'Lanjut sebagai Tamu',
-                    style: TextStyle(color: AppColors.secondary, fontSize: 12),
+                    style: TextStyle(fontSize: 12),
                   ),
                 ),
               ),
@@ -303,10 +304,11 @@ class _LoginScreenState extends State<LoginScreen> {
               children: [
                 const Text('Belum punya akun?', style: TextStyle(color: AppColors.secondary, fontSize: 13)),
                 TextButton(
-                  onPressed: widget.onNavigateToRegister,
+                  onPressed: _loading ? null : widget.onNavigateToRegister,
+                  style: TextButton.styleFrom(foregroundColor: AppColors.primary),
                   child: const Text(
                     'Daftar Sekarang',
-                    style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 13),
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                   ),
                 ),
               ],
@@ -419,11 +421,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
               Align(
                 alignment: Alignment.centerLeft,
                 child: TextButton.icon(
-                  onPressed: widget.onBackToGuest,
-                  icon: const Icon(Icons.arrow_back, size: 16, color: AppColors.secondary),
+                  onPressed: _loading ? null : widget.onBackToGuest,
+                  style: TextButton.styleFrom(foregroundColor: AppColors.secondary),
+                  icon: const Icon(Icons.arrow_back, size: 16),
                   label: const Text(
                     'Lanjut sebagai Tamu',
-                    style: TextStyle(color: AppColors.secondary, fontSize: 12),
+                    style: TextStyle(fontSize: 12),
                   ),
                 ),
               ),
@@ -596,10 +599,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
               children: [
                 const Text('Sudah punya akun?', style: TextStyle(color: AppColors.secondary, fontSize: 13)),
                 TextButton(
-                  onPressed: widget.onNavigateToLogin,
+                  onPressed: _loading ? null : widget.onNavigateToLogin,
+                  style: TextButton.styleFrom(foregroundColor: AppColors.primary),
                   child: const Text(
                     'Masuk di sini',
-                    style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 13),
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                   ),
                 ),
               ],

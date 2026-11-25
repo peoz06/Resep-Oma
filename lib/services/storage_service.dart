@@ -107,14 +107,4 @@ class StorageService {
       return null;
     }
   }
-
-  /// Pilih beberapa foto sekaligus (galeri).
-  static Future<List<XFile>> pickMultiImage() async {
-    try {
-      return await ImagePicker()
-          .pickMultiImage(imageQuality: 85, maxWidth: 1600);
-    } catch (_) {
-      return const [];
-    }
-  }
 }

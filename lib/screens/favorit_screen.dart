@@ -279,51 +279,6 @@ class _FavoritScreenState extends State<FavoritScreen> {
         ],
         const SizedBox(height: 20),
 
-        // Weekly Meal Plan CTA Tip
-        InkWell(
-          onTap: () {
-            widget.onShowToast?.call('Jadwal masak mingguan tersinkronisasi dengan favorit Anda!');
-          },
-          borderRadius: BorderRadius.circular(20),
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceContainer,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: const BoxDecoration(
-                    color: AppColors.primaryFixed,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.lightbulb, color: AppColors.primary, size: 20),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Mau masak apa minggu ini?',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                      ),
-                      Text(
-                        'Atur jadwal masak mingguan dari resep tersimpanmu.',
-                        style: TextStyle(color: AppColors.onSurfaceVariant, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-                const Icon(Icons.arrow_forward, color: AppColors.onSurfaceVariant, size: 18),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 24),
       ],
     );
   }

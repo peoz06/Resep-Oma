@@ -315,7 +315,7 @@ service cloud.firestore {
       allow create, update: if activeUser() && request.auth.uid == uid
         && request.resource.data.keys().hasOnly([
           'uid', 'title', 'description', 'category', 'cookTime',
-          'servings', 'difficulty', 'ingredients', 'steps', 'updatedAt'
+          'servings', 'difficulty', 'ingredients', 'steps', 'updatedAt', 'revision'
         ])
         && request.resource.data.uid == uid
         && request.resource.data.title is string
@@ -327,6 +327,10 @@ service cloud.firestore {
         && request.resource.data.difficulty is string
         && request.resource.data.ingredients is list
         && request.resource.data.steps is list
+        && (!('revision' in request.resource.data)
+          || (request.resource.data.revision is string
+            && request.resource.data.revision.size() > 0
+            && request.resource.data.revision.size() <= 64))
         && request.resource.data.updatedAt == request.time;
       allow delete: if activeUser() && request.auth.uid == uid;
     }

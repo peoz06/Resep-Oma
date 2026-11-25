@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { before, after, beforeEach, test } from 'node:test';
 import { assertFails, assertSucceeds, initializeTestEnvironment } from '@firebase/rules-unit-testing';
-import { collection, deleteDoc, doc, getCountFromServer, getDoc, getDocs, limit, onSnapshot, orderBy, query, runTransaction, serverTimestamp, setDoc, startAfter, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { collection, deleteDoc, doc, documentId, getCountFromServer, getDoc, getDocs, limit, onSnapshot, orderBy, query, runTransaction, serverTimestamp, setDoc, startAfter, updateDoc, where, writeBatch } from 'firebase/firestore';
 import assert from 'node:assert/strict';
 
 // Project demo dan host emulator wajib: tes ini tidak boleh menyentuh cloud.
@@ -268,6 +268,24 @@ test('Kursor katalog melewati resep dengan waktu terbit sama tanpa duplikasi', a
   assert.deepEqual([...first.docs, ...next.docs].map((d) => d.id), ['recipe1', 'c', 'b', 'a']);
 });
 
+test('Admin dapat membuka halaman data lama tanpa tanggal dan menghitung total', async () => {
+  await env.withSecurityRulesDisabled((context) =>
+    setDoc(at(context.firestore(), 'reports/report2'), { status: 'resolved' }));
+  const db = signedIn('admin');
+  const users = query(collection(db, 'users'), orderBy(documentId()));
+  const firstUser = (await getDocs(query(users, limit(1)))).docs[0];
+  const secondUser = (await getDocs(query(users, startAfter(firstUser), limit(1)))).docs[0];
+  assert.deepEqual([firstUser.id, secondUser.id], ['admin', 'banned']);
+  assert.equal(firstUser.data().createdAt, undefined);
+  assert.equal((await getCountFromServer(users)).data().count, 9);
+  const reports = query(collection(db, 'reports'), orderBy(documentId()));
+  const firstReport = (await getDocs(query(reports, limit(1)))).docs[0];
+  const secondReport = (await getDocs(query(reports, startAfter(firstReport), limit(1)))).docs[0];
+  assert.deepEqual([firstReport.id, secondReport.id], ['report1', 'report2']);
+  assert.equal((await getCountFromServer(query(collection(db, 'reports'),
+    where('status', '==', 'open')))).data().count, 1);
+});
+
 test('Dua transaksi favorit untuk resep sama tidak kehilangan perubahan', async () => {
   const toggle = (db) => runTransaction(db, async (tx) => {
     const ref = at(db, 'favorites/other__recipe1');
@@ -411,6 +429,9 @@ test('Draf hanya dapat dibaca dan diedit pemilik aktif', async () => {
   await assertFails(getDoc(at(guest(), 'drafts/owner')));
   await assertFails(setDoc(at(signedIn('suspended'), 'drafts/suspended'), { ...data, uid: 'suspended' }));
   await assertFails(setDoc(at(signedIn('owner'), 'drafts/owner'), { ...data, image: 'file:///private/photo' }));
+  await assertFails(setDoc(at(signedIn('owner'), 'drafts/owner'), { ...data, revision: 1 }));
+  await assertSucceeds(setDoc(at(signedIn('owner'), 'drafts/owner'), { ...data, revision: 'revisi-1' }));
+  await assertSucceeds(setDoc(at(signedIn('owner'), 'drafts/owner'), data));
   await assertSucceeds(deleteDoc(at(signedIn('owner'), 'drafts/owner')));
 });
 

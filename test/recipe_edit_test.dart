@@ -1,10 +1,26 @@
+import 'dart:typed_data';
+
 import 'package:dapurkita/models/recipe_model.dart';
 import 'package:dapurkita/screens/profil_screen.dart';
 import 'package:dapurkita/screens/unggah_resep_screen.dart';
+import 'package:dapurkita/widgets/app_cached_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('Pratinjau lokal memakai ulang pembacaan untuk path yang sama', (tester) async {
+    Widget photo(String path, double width) => MaterialApp(home: AppCachedImage(
+      imageUrl: path, width: width, allowLocal: true,
+    ));
+    final builder = find.byWidgetPredicate((widget) => widget is FutureBuilder<Uint8List>);
+    await tester.pumpWidget(photo('/foto-a.jpg', 60));
+    final first = tester.widget<FutureBuilder<Uint8List>>(builder).future;
+    await tester.pumpWidget(photo('/foto-a.jpg', 80));
+    expect(tester.widget<FutureBuilder<Uint8List>>(builder).future, same(first));
+    await tester.pumpWidget(photo('/foto-b.jpg', 80));
+    expect(tester.widget<FutureBuilder<Uint8List>>(builder).future, isNot(same(first)));
+  });
+
   final recipe = MockData.getInitialRecipes().first.copyWith(
     title: 'Sup Ayam Buatan Sendiri',
     description: 'Resep keluarga yang sudah tersimpan.',
